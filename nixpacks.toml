@@ -1,0 +1,4 @@
+# API Laravel (somente JSON, sem frontend).
+# Força o Nixpacks a usar apenas o provider PHP, evitando que ele
+# detecte o package.json, instale Node e rode "npm run build".
+providers = ["php"]
