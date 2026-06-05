@@ -23,6 +23,7 @@ class Parceiro extends Model
         'cep',
         'rua',
         'numero',
+        'complemento',
         'bairro',
         'cidade',
         'estado',

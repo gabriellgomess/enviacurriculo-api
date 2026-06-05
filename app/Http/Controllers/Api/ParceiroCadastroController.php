@@ -95,6 +95,7 @@ class ParceiroCadastroController extends Controller
                 'cep'          => $validated['cep'],
                 'rua'          => $validated['logradouro'],
                 'numero'       => $validated['numero'],
+                'complemento'  => $validated['complemento'] ?? null,
                 'bairro'       => $validated['bairro'],
                 'cidade'       => $validated['cidade'],
                 'estado'       => $validated['estado'],

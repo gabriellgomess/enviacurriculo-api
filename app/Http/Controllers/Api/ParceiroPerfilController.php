@@ -33,6 +33,7 @@ class ParceiroPerfilController extends Controller
             'cep'            => 'nullable|string|max:9',
             'rua'            => 'nullable|string|max:255',
             'numero'         => 'nullable|string|max:20',
+            'complemento'    => 'nullable|string|max:255',
             'bairro'         => 'nullable|string|max:100',
             'cidade'         => 'nullable|string|max:100',
             'estado'         => 'nullable|string|size:2',
