@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AdminFinanceiroController;
 use App\Http\Controllers\Api\AdminNotaFiscalController;
 use App\Http\Controllers\Api\AdminPermissionController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\CandidatoController;
 use App\Http\Controllers\Api\CandidatoCreditoController;
 use App\Http\Controllers\Api\CandidatoCurriculoController;
@@ -71,6 +72,10 @@ Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
     Route::post('login/context', [AuthController::class, 'selectContext']);
     Route::post('register', RegisterCandidatoController::class);
+
+    // Recuperação de senha
+    Route::post('forgot-password', [PasswordResetController::class, 'forgot'])->middleware('throttle:6,1');
+    Route::post('reset-password',  [PasswordResetController::class, 'reset'])->middleware('throttle:6,1');
 });
 
 // Cadastro público de parceiros
