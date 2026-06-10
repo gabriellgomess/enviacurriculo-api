@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\AdminFinanceiroController;
+use App\Http\Controllers\Api\AdminNotaFiscalController;
 use App\Http\Controllers\Api\AdminPermissionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CandidatoController;
@@ -162,6 +164,29 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('candidatos', CandidatoController::class)->except(['store']);
         Route::patch('candidatos/{candidato}/toggle-active', [CandidatoController::class, 'toggleActive']);
         Route::get('candidatos/{candidato}/documentos/{documento}/download', [CandidatoController::class, 'downloadDocumento']);
+
+        // Financeiro — configurações por tipo de franquia
+        // (mensalidade, tx_royalties, tx_marketing, percentual_comissao, percentual_imposto)
+        Route::prefix('financeiro')->group(function () {
+            Route::get('configs/{categoria}',              [AdminFinanceiroController::class, 'indexConfigs']);
+            Route::post('configs/{categoria}',             [AdminFinanceiroController::class, 'storeConfig']);
+            Route::put('configs/{categoria}/{config}',     [AdminFinanceiroController::class, 'updateConfig']);
+            Route::delete('configs/{categoria}/{config}',  [AdminFinanceiroController::class, 'destroyConfig']);
+
+            // Tipos de comissão (recrutamento, parceiro, candidatos)
+            Route::get('comissao-tipos',                  [AdminFinanceiroController::class, 'indexComissaoTipos']);
+            Route::put('comissao-tipos/{comissaoTipo}',   [AdminFinanceiroController::class, 'updateComissaoTipo']);
+
+            // Relatório de faturamento (consolidado de todas as franquias)
+            Route::get('faturamentos', [AdminFinanceiroController::class, 'faturamentos']);
+
+            // Fiscal — notas fiscais da franqueadora
+            Route::get('notas',                  [AdminNotaFiscalController::class, 'index']);
+            Route::post('notas',                 [AdminNotaFiscalController::class, 'store']);
+            Route::post('notas/{nota}',          [AdminNotaFiscalController::class, 'update']); // POST p/ multipart
+            Route::delete('notas/{nota}',        [AdminNotaFiscalController::class, 'destroy']);
+            Route::get('notas/{nota}/download',  [AdminNotaFiscalController::class, 'download']);
+        });
     });
 
     /*
