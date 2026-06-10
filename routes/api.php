@@ -180,6 +180,15 @@ Route::middleware('auth:sanctum')->group(function () {
             // Relatório de faturamento (consolidado de todas as franquias)
             Route::get('faturamentos', [AdminFinanceiroController::class, 'faturamentos']);
 
+            // Contas a receber / pagar (consolidado de todas as franquias)
+            Route::get('contas-receber', [AdminFinanceiroController::class, 'contasReceber']);
+            Route::get('contas-pagar',   [AdminFinanceiroController::class, 'contasPagar']);
+
+            // Faturamento — cobranças da franqueadora às franquias
+            Route::get('franquia-faturamentos',                          [AdminFinanceiroController::class, 'indexFranquiaFaturamentos']);
+            Route::post('franquia-faturamentos',                         [AdminFinanceiroController::class, 'storeFranquiaFaturamento']);
+            Route::patch('franquia-faturamentos/{faturamento}/status',   [AdminFinanceiroController::class, 'updateFranquiaFaturamentoStatus']);
+
             // Fiscal — notas fiscais da franqueadora
             Route::get('notas',                  [AdminNotaFiscalController::class, 'index']);
             Route::post('notas',                 [AdminNotaFiscalController::class, 'store']);

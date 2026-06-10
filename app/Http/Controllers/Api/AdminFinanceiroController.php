@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ComissaoTipo;
 use App\Models\FinanceiroConfig;
+use App\Models\FranquiaContaPagar;
+use App\Models\FranquiaContaReceber;
+use App\Models\FranquiaFaturamento;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -97,6 +100,134 @@ class AdminFinanceiroController extends Controller
         $comissaoTipo->update($data);
 
         return response()->json($comissaoTipo);
+    }
+
+    /* ─── Contas a receber (consolidado de todas as franquias) ───────── */
+
+    public function contasReceber(Request $request)
+    {
+        $query = FranquiaContaReceber::query()
+            ->with('franquia:id,nome')
+            ->orderByDesc('created_at');
+
+        if ($request->filled('franquia_id')) {
+            $query->where('franquia_id', $request->franquia_id);
+        }
+
+        if ($request->filled('status') && $request->status !== 'todos') {
+            $query->where('status', $request->status);
+        }
+
+        $contas = $query->paginate(20);
+
+        $totais = FranquiaContaReceber::query()
+            ->when($request->filled('franquia_id'), fn($q) => $q->where('franquia_id', $request->franquia_id))
+            ->when($request->filled('status') && $request->status !== 'todos', fn($q) => $q->where('status', $request->status))
+            ->selectRaw('COALESCE(SUM(valor_bruto),0) as bruto, COALESCE(SUM(valor_liquido),0) as liquido')
+            ->first();
+
+        return response()->json([
+            'data'   => $contas->items(),
+            'totais' => ['bruto' => (float) $totais->bruto, 'liquido' => (float) $totais->liquido],
+            'meta'   => ['total' => $contas->total(), 'per_page' => $contas->perPage(),
+                         'current_page' => $contas->currentPage(), 'last_page' => $contas->lastPage()],
+        ]);
+    }
+
+    /* ─── Contas a pagar (consolidado de todas as franquias) ─────────── */
+
+    public function contasPagar(Request $request)
+    {
+        $query = FranquiaContaPagar::query()
+            ->with('franquia:id,nome')
+            ->orderBy('data_vencimento');
+
+        if ($request->filled('franquia_id')) {
+            $query->where('franquia_id', $request->franquia_id);
+        }
+
+        if ($request->filled('status') && $request->status !== 'todos') {
+            $query->where('status', $request->status);
+        }
+
+        $contas = $query->paginate(20);
+
+        $total = FranquiaContaPagar::query()
+            ->when($request->filled('franquia_id'), fn($q) => $q->where('franquia_id', $request->franquia_id))
+            ->when($request->filled('status') && $request->status !== 'todos', fn($q) => $q->where('status', $request->status))
+            ->sum('valor');
+
+        return response()->json([
+            'data'   => $contas->items(),
+            'totais' => ['valor' => (float) $total],
+            'meta'   => ['total' => $contas->total(), 'per_page' => $contas->perPage(),
+                         'current_page' => $contas->currentPage(), 'last_page' => $contas->lastPage()],
+        ]);
+    }
+
+    /* ─── Faturamento (cobranças da franqueadora às franquias) ───────── */
+
+    public function indexFranquiaFaturamentos(Request $request)
+    {
+        $query = FranquiaFaturamento::query()
+            ->with('franquia:id,nome')
+            ->orderByDesc('created_at');
+
+        if ($request->filled('franquia_id')) {
+            $query->where('franquia_id', $request->franquia_id);
+        }
+
+        if ($request->filled('status') && $request->status !== 'todos') {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('tipo') && $request->tipo !== 'todos') {
+            $query->where('tipo', $request->tipo);
+        }
+
+        $faturamentos = $query->paginate(20);
+
+        $totais = FranquiaFaturamento::query()
+            ->when($request->filled('franquia_id'), fn($q) => $q->where('franquia_id', $request->franquia_id))
+            ->when($request->filled('tipo') && $request->tipo !== 'todos', fn($q) => $q->where('tipo', $request->tipo))
+            ->selectRaw("COALESCE(SUM(CASE WHEN status = 'pago' THEN valor ELSE 0 END),0) as pago,
+                         COALESCE(SUM(CASE WHEN status = 'pendente' THEN valor ELSE 0 END),0) as pendente")
+            ->first();
+
+        return response()->json([
+            'data'   => $faturamentos->items(),
+            'totais' => ['pago' => (float) $totais->pago, 'pendente' => (float) $totais->pendente],
+            'meta'   => ['total' => $faturamentos->total(), 'per_page' => $faturamentos->perPage(),
+                         'current_page' => $faturamentos->currentPage(), 'last_page' => $faturamentos->lastPage()],
+        ]);
+    }
+
+    public function storeFranquiaFaturamento(Request $request)
+    {
+        $data = $request->validate([
+            'franquia_id'     => 'required|integer|exists:franquias,id',
+            'descricao'       => 'required|string|max:255',
+            'tipo'            => 'required|in:comissao_vaga,taxa_mensal,royalties,outros',
+            'valor'           => 'required|numeric|min:0',
+            'data_referencia' => 'nullable|date',
+            'empresa_nome'    => 'nullable|string|max:255',
+        ]);
+
+        $faturamento = FranquiaFaturamento::create([...$data, 'status' => 'pendente']);
+
+        return response()->json($faturamento->load('franquia:id,nome'), 201);
+    }
+
+    public function updateFranquiaFaturamentoStatus(Request $request, FranquiaFaturamento $faturamento)
+    {
+        $data = $request->validate(['status' => 'required|in:pendente,pago']);
+
+        $faturamento->update([
+            'status'         => $data['status'],
+            'data_pagamento' => $data['status'] === 'pago' ? now() : null,
+        ]);
+
+        return response()->json($faturamento->load('franquia:id,nome'));
     }
 
     /* ─── Relatório de faturamento (todas as franquias) ──────────────── */
