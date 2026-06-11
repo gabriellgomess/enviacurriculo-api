@@ -79,6 +79,26 @@ Route::prefix('auth')->group(function () {
     Route::post('reset-password',  [PasswordResetController::class, 'reset'])->middleware('throttle:6,1');
 });
 
+// Cadastro público de empresas
+Route::post('empresas/cadastrar', \App\Http\Controllers\Api\RegisterEmpresaController::class)
+    ->middleware('throttle:10,1');
+
+// Lead público "Seja Franqueado" (home)
+Route::post('franquia-leads', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'store'])
+    ->middleware('throttle:10,1');
+
+// Unsubscribe de e-mails por token
+Route::get('unsubscribe',  [\App\Http\Controllers\Api\UnsubscribeController::class, 'show'])
+    ->middleware('throttle:30,1');
+Route::post('unsubscribe', [\App\Http\Controllers\Api\UnsubscribeController::class, 'store'])
+    ->middleware('throttle:10,1');
+
+// Teste DISC público por token
+Route::get('disc-teste/{token}',            [\App\Http\Controllers\Api\DiscPublicoController::class, 'show'])
+    ->middleware('throttle:30,1');
+Route::post('disc-teste/{token}/responder', [\App\Http\Controllers\Api\DiscPublicoController::class, 'responder'])
+    ->middleware('throttle:10,1');
+
 // Cadastro público de parceiros
 Route::prefix('parceiro/cadastro')->group(function () {
     Route::post('pagamento', [\App\Http\Controllers\Api\ParceiroCadastroController::class, 'gerarPagamento']);
@@ -202,6 +222,12 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('notas/{nota}',        [AdminNotaFiscalController::class, 'destroy']);
             Route::get('notas/{nota}/download',  [AdminNotaFiscalController::class, 'download']);
         });
+
+        // Leads "Seja Franqueado"
+        Route::get('leads',           [\App\Http\Controllers\Api\FranquiaLeadController::class, 'index']);
+        Route::patch('leads/{lead}',  [\App\Http\Controllers\Api\FranquiaLeadController::class, 'update']);
+        Route::delete('leads/{lead}', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'destroy']);
+        Route::post('leads/{lead}/disc-convite', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'gerarDiscConvite']);
 
         // Gestão de franquias — metas, onboarding, vínculos e acessos
         Route::prefix('gestao')->group(function () {
