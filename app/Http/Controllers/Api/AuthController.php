@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccessLog;
 use App\Models\AdminPermission;
 use App\Models\Candidato;
 use App\Models\Empresa;
@@ -60,6 +61,8 @@ class AuthController extends Controller
             }
 
             $token = $user->createToken('auth', ['role:admin'])->plainTextToken;
+
+            AccessLog::record($user, 'admin', 'login');
 
             $perm = AdminPermission::firstOrCreate(
                 ['user_id' => $user->id],
@@ -183,7 +186,16 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        $token = $request->user()->currentAccessToken();
+
+        // Extrai o role das abilities do token (ex.: "role:franquia")
+        $roleAbility = collect($token->abilities ?? [])
+            ->first(fn($a) => str_starts_with($a, 'role:'));
+        $userType = $roleAbility ? substr($roleAbility, 5) : 'desconhecido';
+
+        AccessLog::record($request->user(), $userType, 'logout');
+
+        $token->delete();
 
         return response()->json(['message' => 'Logout realizado com sucesso.']);
     }
@@ -233,6 +245,8 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken('auth', $abilities)->plainTextToken;
+
+        AccessLog::record($user, $role, 'login');
 
         return response()->json([
             'token'      => $token,

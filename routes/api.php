@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AdminFinanceiroController;
+use App\Http\Controllers\Api\AdminGestaoFranquiasController;
 use App\Http\Controllers\Api\AdminNotaFiscalController;
 use App\Http\Controllers\Api\AdminPermissionController;
 use App\Http\Controllers\Api\AuthController;
@@ -200,6 +201,35 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('notas/{nota}',          [AdminNotaFiscalController::class, 'update']); // POST p/ multipart
             Route::delete('notas/{nota}',        [AdminNotaFiscalController::class, 'destroy']);
             Route::get('notas/{nota}/download',  [AdminNotaFiscalController::class, 'download']);
+        });
+
+        // Gestão de franquias — metas, onboarding, vínculos e acessos
+        Route::prefix('gestao')->group(function () {
+            // Tipos de metas
+            Route::get('tipos-metas',                [AdminGestaoFranquiasController::class, 'indexTiposMetas']);
+            Route::post('tipos-metas',               [AdminGestaoFranquiasController::class, 'storeTipoMeta']);
+            Route::put('tipos-metas/{tipoMeta}',     [AdminGestaoFranquiasController::class, 'updateTipoMeta']);
+            Route::delete('tipos-metas/{tipoMeta}',  [AdminGestaoFranquiasController::class, 'destroyTipoMeta']);
+
+            // Metas por franquia
+            Route::get('metas',            [AdminGestaoFranquiasController::class, 'indexMetas']);
+            Route::post('metas',           [AdminGestaoFranquiasController::class, 'storeMeta']);
+            Route::put('metas/{meta}',     [AdminGestaoFranquiasController::class, 'updateMeta']);
+            Route::delete('metas/{meta}',  [AdminGestaoFranquiasController::class, 'destroyMeta']);
+
+            // Onboarding — itens (criação de etapas) e acompanhamento
+            Route::get('onboarding/itens',           [AdminGestaoFranquiasController::class, 'indexOnboardingItens']);
+            Route::post('onboarding/itens',          [AdminGestaoFranquiasController::class, 'storeOnboardingItem']);
+            Route::put('onboarding/itens/{item}',    [AdminGestaoFranquiasController::class, 'updateOnboardingItem']);
+            Route::delete('onboarding/itens/{item}', [AdminGestaoFranquiasController::class, 'destroyOnboardingItem']);
+            Route::get('onboarding/progresso',                [AdminGestaoFranquiasController::class, 'onboardingProgresso']);
+            Route::get('onboarding/progresso/{franquiaId}',   [AdminGestaoFranquiasController::class, 'onboardingProgressoFranquia']);
+
+            // Vínculos (envios candidato→vaga por franquia)
+            Route::get('vinculos', [AdminGestaoFranquiasController::class, 'vinculos']);
+
+            // Registro de acessos
+            Route::get('acessos', [AdminGestaoFranquiasController::class, 'acessos']);
         });
     });
 
