@@ -274,6 +274,34 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('dashboard',           [EmpresaDashboardController::class, 'index']);
         Route::get('dashboard/conversao', [EmpresaDashboardController::class, 'conversao']);
 
+        // Vagas
+        Route::get('vagas',                      [\App\Http\Controllers\Api\EmpresaVagaController::class, 'index']);
+        Route::post('vagas',                     [\App\Http\Controllers\Api\EmpresaVagaController::class, 'store']);
+        Route::get('vagas/{id}',                 [\App\Http\Controllers\Api\EmpresaVagaController::class, 'show']);
+        Route::put('vagas/{id}',                 [\App\Http\Controllers\Api\EmpresaVagaController::class, 'update']);
+        Route::patch('vagas/{id}/status',        [\App\Http\Controllers\Api\EmpresaVagaController::class, 'changeStatus']);
+        Route::delete('vagas/{id}',              [\App\Http\Controllers\Api\EmpresaVagaController::class, 'destroy']);
+
+        // Candidatos recebidos (Kanban)
+        Route::get('candidatos-recebidos',                          [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'index']);
+        Route::get('candidatos-recebidos/{id}',                     [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'show']);
+        Route::patch('candidatos-recebidos/{id}/etapa',             [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'updateEtapa']);
+        Route::patch('candidatos-recebidos/{id}/status',            [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'updateStatus']);
+        Route::post('candidatos-recebidos/{id}/parecer',            [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'storeParecer']);
+        Route::get('candidatos-recebidos/{id}/curriculo/download',  [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'downloadCurriculo']);
+        Route::get('vagas/{id}/candidatos', fn(\Illuminate\Http\Request $r, int $id) =>
+            app(\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class)->index($r->merge(['vaga_id' => $id])));
+        Route::get('kanban/etapas',  [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'kanbanEtapas']);
+
+        // Banco de currículos
+        Route::get('banco-curriculos',                  [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'index']);
+        Route::post('banco-curriculos',                 [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'store']);
+        Route::post('banco-curriculos/copia-base',      [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'copiaBase']);
+        Route::get('banco-curriculos/duplicata',        [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'duplicata']);
+        Route::put('banco-curriculos/{id}',             [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'update']);
+        Route::patch('banco-curriculos/{id}/etapa',     [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'updateEtapa']);
+        Route::get('banco-curriculos/{id}/download',    [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'download']);
+
         // Testes DISC (envio a candidatos via link público)
         Route::get('testes/disc',                  [\App\Http\Controllers\Api\EmpresaTesteController::class, 'discIndex']);
         Route::post('testes/disc',                 [\App\Http\Controllers\Api\EmpresaTesteController::class, 'discStore']);
@@ -420,6 +448,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('agenda',                            [FranquiaAgendaController::class, 'store']);
         Route::put('agenda/{id}',                        [FranquiaAgendaController::class, 'update']);
         Route::delete('agenda/{id}',                     [FranquiaAgendaController::class, 'destroy']);
+
+        // Notificações
+        Route::get('notificacoes',        [\App\Http\Controllers\Api\FranquiaNotificacaoController::class, 'index']);
+        Route::post('notificacoes/lidas', [\App\Http\Controllers\Api\FranquiaNotificacaoController::class, 'marcarLidas']);
     });
 
     /*

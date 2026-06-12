@@ -124,6 +124,12 @@ class CandidatoVagaController extends Controller
                 'referencia_id'   => $envio->id,
             ]);
 
+            \App\Models\FranquiaNotificacao::notificar(
+                $vaga->franquia_id,
+                'Novo candidato na vaga',
+                "{$c->user->name} se candidatou à vaga {$vaga->titulo}.",
+            );
+
             return response()->json([
                 'data'            => $envio,
                 'saldo_restante'  => $saldoAntes - 1,

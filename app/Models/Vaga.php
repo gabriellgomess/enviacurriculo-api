@@ -32,6 +32,14 @@ class Vaga extends Model
         'status',
         'data_abertura',
         'data_fechamento',
+        'canal',
+        'ocultar_empresa',
+        'ocultar_endereco',
+        'genero',
+        'turno',
+        'horario_trabalho',
+        'logradouro',
+        'numero',
     ];
 
     protected $casts = [
@@ -41,6 +49,8 @@ class Vaga extends Model
         'quantidade_vagas'=> 'integer',
         'data_abertura'   => 'date',
         'data_fechamento' => 'date',
+        'ocultar_empresa' => 'boolean',
+        'ocultar_endereco'=> 'boolean',
     ];
 
     protected $appends = ['modalidade', 'salario_oculto'];
@@ -84,5 +94,10 @@ class Vaga extends Model
     public function franquiasCompartilhadas()
     {
         return $this->belongsToMany(Franquia::class, 'vaga_franquia_compartilhada', 'vaga_id', 'franquia_id')->withTimestamps();
+    }
+
+    public function beneficiosCatalogo()
+    {
+        return $this->belongsToMany(BeneficioCatalogo::class, 'vaga_beneficios', 'vaga_id', 'beneficio_id')->withTimestamps();
     }
 }

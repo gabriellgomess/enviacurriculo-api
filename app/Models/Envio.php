@@ -15,11 +15,31 @@ class Envio extends Model
         'mensagem',
         'status',
         'visualizado_em',
+        'kanban_etapa_id',
+        'origem',
+        'status_empresa',
+        'observacao',
+        'salario_aprovado',
+        'data_admissao',
+        'data_saida',
     ];
 
     protected $casts = [
-        'visualizado_em' => 'datetime',
+        'visualizado_em'   => 'datetime',
+        'salario_aprovado' => 'float',
+        'data_admissao'    => 'date:Y-m-d',
+        'data_saida'       => 'date:Y-m-d',
     ];
+
+    public function kanbanEtapa()
+    {
+        return $this->belongsTo(KanbanEtapa::class);
+    }
+
+    public function pareceres()
+    {
+        return $this->hasMany(EnvioParecer::class);
+    }
 
     public function candidato()
     {
