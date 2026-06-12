@@ -180,6 +180,29 @@ class EmpresaCandidatoRecebidoController extends Controller
         return response()->json(['data' => $etapas]);
     }
 
+    public function mapaCandidatos(Request $request)
+    {
+        $empresaId = $this->tokenContextId($request);
+
+        $candidatos = \App\Models\Candidato::with('user:id,name')
+            ->whereHas('envios.vaga', fn($q) => $q->where('empresa_id', $empresaId))
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->get()
+            ->map(fn($c) => [
+                'id'             => $c->id,
+                'nome'           => $c->user?->name,
+                'cargo_desejado' => $c->cargo_desejado,
+                'cidade'         => $c->cidade,
+                'estado'         => $c->estado,
+                'telefone'       => $c->telefone,
+                'latitude'       => (float) $c->latitude,
+                'longitude'      => (float) $c->longitude,
+            ]);
+
+        return response()->json(['data' => $candidatos]);
+    }
+
     /* ─── Helpers ────────────────────────────────────────────────────── */
 
     private function baseQuery(int $empresaId)

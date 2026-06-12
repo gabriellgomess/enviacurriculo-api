@@ -39,8 +39,10 @@ class EmpresaTesteController extends Controller
 
         $data = $request->validate([
             'candidato_id'   => 'required|integer|exists:candidatos,id',
-            'vaga_envio_id'  => 'nullable|integer|exists:envios,id',
+            'vaga_envio_id'  => ['nullable', 'integer', $this->envioDaEmpresa($empresaId)],
             'expira_em_dias' => 'nullable|integer|min:1|max:60',
+        ], [
+            'vaga_envio_id.exists' => 'A candidatura informada não existe ou não pertence à sua empresa.',
         ]);
 
         $convite = DiscConvite::create([
@@ -214,15 +216,29 @@ class EmpresaTesteController extends Controller
 
     private function validateAgendado(Request $request): array
     {
+        $empresaId = $this->tokenContextId($request);
+
         return $request->validate([
             'candidato_id'  => 'required|integer|exists:candidatos,id',
-            'vaga_envio_id' => 'nullable|integer|exists:envios,id',
+            'vaga_envio_id' => ['nullable', 'integer', $this->envioDaEmpresa($empresaId)],
             'vaga_id'       => 'nullable|integer|exists:vagas,id',
             'tipo_teste'    => 'required|string|max:30',
             'data'          => 'required|date',
             'local'         => 'nullable|string|max:255',
             'observacao'    => 'nullable|string',
+        ], [
+            'vaga_envio_id.exists' => 'A candidatura informada não existe ou não pertence à sua empresa.',
         ]);
+    }
+
+    /**
+     * Regra: o envio informado deve pertencer a uma vaga da própria empresa.
+     */
+    private function envioDaEmpresa(int $empresaId): \Illuminate\Validation\Rules\Exists
+    {
+        return \Illuminate\Validation\Rule::exists('envios', 'id')->where(
+            fn($q) => $q->whereIn('vaga_id', fn($sub) => $sub->select('id')->from('vagas')->where('empresa_id', $empresaId))
+        );
     }
 
     private function agendadoPayload(TesteAgendado $t): array

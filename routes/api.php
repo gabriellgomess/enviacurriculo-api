@@ -292,6 +292,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('vagas/{id}/candidatos', fn(\Illuminate\Http\Request $r, int $id) =>
             app(\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class)->index($r->merge(['vaga_id' => $id])));
         Route::get('kanban/etapas',  [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'kanbanEtapas']);
+        Route::get('mapa/candidatos', [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'mapaCandidatos']);
 
         // Banco de currículos
         Route::get('banco-curriculos',                  [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'index']);
@@ -407,6 +408,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('contas-pagar',                   [FranquiaFinanceiroController::class, 'contasPagar']);
             Route::post('contas-pagar',                  [FranquiaFinanceiroController::class, 'storeContaPagar']);
             Route::patch('contas-pagar/{id}/pagar',      [FranquiaFinanceiroController::class, 'pagarConta']);
+            Route::get('taxas',                          [FranquiaFinanceiroController::class, 'taxas']);
+            Route::get('faturaveis',                     [FranquiaFinanceiroController::class, 'faturaveis']);
+            Route::post('faturar',                       [FranquiaFinanceiroController::class, 'faturar']);
             Route::get('faturamento',                    [FranquiaFinanceiroController::class, 'faturamento']);
             Route::get('fiscal',                         [FranquiaFinanceiroController::class, 'fiscal']);
             Route::get('relatorios',                     [FranquiaFinanceiroController::class, 'relatorios']);
