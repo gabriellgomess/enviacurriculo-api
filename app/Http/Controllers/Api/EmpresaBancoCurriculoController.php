@@ -46,25 +46,40 @@ class EmpresaBancoCurriculoController extends Controller
     {
         $empresaId = $this->tokenContextId($request);
 
+        // O front envia "nome_completo"; o contrato original previa "nome" — aceita ambos
+        if (!$request->filled('nome') && $request->filled('nome_completo')) {
+            $request->merge(['nome' => $request->nome_completo]);
+        }
+
         $data = $request->validate([
-            'nome'           => 'required|string|max:255',
-            'email'          => 'nullable|email|max:255',
-            'telefone'       => 'nullable|string|max:20',
-            'cpf'            => 'nullable|string|max:14',
-            'cargo_desejado' => 'nullable|string|max:255',
-            'cidade'         => 'nullable|string|max:100',
-            'estado'         => 'nullable|string|size:2',
-            'arquivo'        => 'required|file|max:5120|mimes:pdf,doc,docx',
+            'nome'                     => 'required|string|max:255',
+            'email'                    => 'nullable|email|max:255',
+            'telefone'                 => 'nullable|string|max:20',
+            'cpf'                      => 'nullable|string|max:14',
+            'cargo_desejado'           => 'nullable|string|max:255',
+            'cargos_interesse'         => 'nullable|array',
+            'cargos_interesse.*'       => 'string|max:100',
+            'experiencia_profissional' => 'nullable|string',
+            'educacao'                 => 'nullable|string',
+            'habilidades'              => 'nullable|string',
+            'cidade'                   => 'nullable|string|max:100',
+            'estado'                   => 'nullable|string|size:2',
+            'bairro'                   => 'nullable|string|max:100',
+            'origem'                   => 'nullable|in:manual,copia_base',
+            'arquivo'                  => 'nullable|file|max:5120|mimes:pdf,doc,docx',
         ]);
 
-        $arquivo = $request->file('arquivo');
+        $extra = ['empresa_id' => $empresaId, 'origem' => $data['origem'] ?? 'manual'];
+
+        if ($request->hasFile('arquivo')) {
+            $arquivo = $request->file('arquivo');
+            $extra['arquivo_path'] = $arquivo->store("empresas/{$empresaId}/banco-curriculos", 'public');
+            $extra['arquivo_nome'] = $arquivo->getClientOriginalName();
+        }
 
         $curriculo = EmpresaCurriculo::create([
-            ...collect($data)->except('arquivo')->all(),
-            'empresa_id'   => $empresaId,
-            'origem'       => 'manual',
-            'arquivo_path' => $arquivo->store("empresas/{$empresaId}/banco-curriculos", 'public'),
-            'arquivo_nome' => $arquivo->getClientOriginalName(),
+            ...collect($data)->except(['arquivo', 'origem'])->all(),
+            ...$extra,
         ]);
 
         return response()->json(['data' => $this->payload($curriculo)], 201);
@@ -110,20 +125,45 @@ class EmpresaBancoCurriculoController extends Controller
     {
         $empresaId = $this->tokenContextId($request);
 
+        if (!$request->filled('nome') && $request->filled('nome_completo')) {
+            $request->merge(['nome' => $request->nome_completo]);
+        }
+
         $data = $request->validate([
-            'nome'           => 'required|string|max:255',
-            'email'          => 'nullable|email|max:255',
-            'telefone'       => 'nullable|string|max:20',
-            'cpf'            => 'nullable|string|max:14',
-            'cargo_desejado' => 'nullable|string|max:255',
-            'cidade'         => 'nullable|string|max:100',
-            'estado'         => 'nullable|string|size:2',
+            'nome'                     => 'required|string|max:255',
+            'email'                    => 'nullable|email|max:255',
+            'telefone'                 => 'nullable|string|max:20',
+            'cpf'                      => 'nullable|string|max:14',
+            'cargo_desejado'           => 'nullable|string|max:255',
+            'cargos_interesse'         => 'nullable|array',
+            'cargos_interesse.*'       => 'string|max:100',
+            'experiencia_profissional' => 'nullable|string',
+            'educacao'                 => 'nullable|string',
+            'habilidades'              => 'nullable|string',
+            'cidade'                   => 'nullable|string|max:100',
+            'estado'                   => 'nullable|string|size:2',
+            'bairro'                   => 'nullable|string|max:100',
         ]);
 
         $curriculo = EmpresaCurriculo::where('empresa_id', $empresaId)->findOrFail($id);
         $curriculo->update($data);
 
         return response()->json(['message' => 'Currículo atualizado.']);
+    }
+
+    public function destroy(Request $request, int $id)
+    {
+        $empresaId = $this->tokenContextId($request);
+
+        $curriculo = EmpresaCurriculo::where('empresa_id', $empresaId)->findOrFail($id);
+
+        if ($curriculo->arquivo_path && $curriculo->origem === 'manual') {
+            Storage::disk('public')->delete($curriculo->arquivo_path);
+        }
+
+        $curriculo->delete();
+
+        return response()->noContent();
     }
 
     public function updateEtapa(Request $request, int $id)
@@ -146,11 +186,12 @@ class EmpresaBancoCurriculoController extends Controller
         $empresaId = $this->tokenContextId($request);
 
         $request->validate([
+            'nome'  => 'nullable|string|max:255',
             'email' => 'nullable|email',
             'cpf'   => 'nullable|string|max:14',
         ]);
 
-        if (!$request->filled('email') && !$request->filled('cpf')) {
+        if (!$request->filled('email') && !$request->filled('cpf') && !$request->filled('nome')) {
             return response()->json(['duplicado' => false]);
         }
 
@@ -158,6 +199,7 @@ class EmpresaBancoCurriculoController extends Controller
             ->where(function ($q) use ($request) {
                 if ($request->filled('email')) $q->orWhere('email', $request->email);
                 if ($request->filled('cpf'))   $q->orWhere('cpf', $request->cpf);
+                if ($request->filled('nome'))  $q->orWhere('nome', $request->nome);
             })
             ->first();
 
@@ -214,18 +256,24 @@ class EmpresaBancoCurriculoController extends Controller
     private function payload(EmpresaCurriculo $c): array
     {
         return [
-            'id'              => $c->id,
-            'candidato_id'    => $c->candidato_id,
-            'kanban_etapa_id' => $c->kanban_etapa_id,
-            'nome'            => $c->nome,
-            'email'           => $c->email,
-            'telefone'        => $c->telefone,
-            'cargo_desejado'  => $c->cargo_desejado,
-            'cidade'          => $c->cidade,
-            'estado'          => $c->estado,
-            'origem'          => $c->origem,
-            'arquivo_nome'    => $c->arquivo_nome,
-            'created_at'      => $c->created_at,
+            'id'                       => $c->id,
+            'candidato_id'             => $c->candidato_id,
+            'kanban_etapa_id'          => $c->kanban_etapa_id,
+            'nome'                     => $c->nome,
+            'nome_completo'            => $c->nome, // alias usado pelo front
+            'email'                    => $c->email,
+            'telefone'                 => $c->telefone,
+            'cargo_desejado'           => $c->cargo_desejado,
+            'cargos_interesse'         => $c->cargos_interesse ?? [],
+            'experiencia_profissional' => $c->experiencia_profissional,
+            'educacao'                 => $c->educacao,
+            'habilidades'              => $c->habilidades,
+            'cidade'                   => $c->cidade,
+            'estado'                   => $c->estado,
+            'bairro'                   => $c->bairro,
+            'origem'                   => $c->origem,
+            'arquivo_nome'             => $c->arquivo_nome,
+            'created_at'               => $c->created_at,
         ];
     }
 }

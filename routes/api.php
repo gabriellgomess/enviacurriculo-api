@@ -300,6 +300,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('banco-curriculos/copia-base',      [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'copiaBase']);
         Route::get('banco-curriculos/duplicata',        [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'duplicata']);
         Route::put('banco-curriculos/{id}',             [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'update']);
+        Route::delete('banco-curriculos/{id}',          [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'destroy']);
         Route::patch('banco-curriculos/{id}/etapa',     [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'updateEtapa']);
         Route::get('banco-curriculos/{id}/download',    [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'download']);
 
