@@ -274,6 +274,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('dashboard',           [EmpresaDashboardController::class, 'index']);
         Route::get('dashboard/conversao', [EmpresaDashboardController::class, 'conversao']);
 
+        // Testes DISC (envio a candidatos via link público)
+        Route::get('testes/disc',                  [\App\Http\Controllers\Api\EmpresaTesteController::class, 'discIndex']);
+        Route::post('testes/disc',                 [\App\Http\Controllers\Api\EmpresaTesteController::class, 'discStore']);
+        Route::get('testes/disc/{id}',             [\App\Http\Controllers\Api\EmpresaTesteController::class, 'discShow']);
+        Route::post('testes/disc/{id}/reenviar',   [\App\Http\Controllers\Api\EmpresaTesteController::class, 'discReenviar']);
+
+        // Testes agendados (práticos/técnicos)
+        Route::get('testes/agendados',                 [\App\Http\Controllers\Api\EmpresaTesteController::class, 'agendadosIndex']);
+        Route::post('testes/agendados',                [\App\Http\Controllers\Api\EmpresaTesteController::class, 'agendadosStore']);
+        Route::put('testes/agendados/{id}',            [\App\Http\Controllers\Api\EmpresaTesteController::class, 'agendadosUpdate']);
+        Route::patch('testes/agendados/{id}/status',   [\App\Http\Controllers\Api\EmpresaTesteController::class, 'agendadosStatus']);
+        Route::delete('testes/agendados/{id}',         [\App\Http\Controllers\Api\EmpresaTesteController::class, 'agendadosDestroy']);
+
         // Parceiros (catálogo público para empresa)
         Route::get('parceiros',                       [EmpresaParceiroController::class, 'index']);
         Route::get('parceiros/{id}',                  [EmpresaParceiroController::class, 'show']);

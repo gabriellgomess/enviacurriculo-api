@@ -19,7 +19,8 @@ class DiscPublicoController extends Controller
      */
     public function show(string $token)
     {
-        $convite = DiscConvite::with('lead:id,nome_completo')->where('token', $token)->first();
+        $convite = DiscConvite::with(['lead:id,nome_completo', 'candidato.user:id,name'])
+            ->where('token', $token)->first();
 
         if (!$convite) {
             return response()->json(['status' => 'invalid', 'message' => 'Convite não encontrado.'], 404);
@@ -42,7 +43,8 @@ class DiscPublicoController extends Controller
             'status'     => 'pendente',
             'convite_id' => $convite->id,
             'lead_id'    => $convite->lead_id,
-            'lead_nome'  => $convite->lead?->nome_completo,
+            'lead_nome'  => $convite->lead?->nome_completo
+                ?? $convite->candidato?->user?->name,
             'questoes'   => $questoes,
         ]);
     }
@@ -76,16 +78,32 @@ class DiscPublicoController extends Controller
         ]);
 
         return DB::transaction(function () use ($convite, $data) {
-            DiscLeadResultado::create([
-                'convite_id'       => $convite->id,
-                'lead_id'          => $convite->lead_id,
-                'score_d'          => $data['score_d'],
-                'score_i'          => $data['score_i'],
-                'score_s'          => $data['score_s'],
-                'score_c'          => $data['score_c'],
-                'perfil_dominante' => $data['perfil_dominante'],
-                'respostas'        => $data['respostas'] ?? null,
-            ]);
+            if ($convite->candidato_id) {
+                // Convite enviado por empresa a um candidato
+                \App\Models\CandidatoDisc::create([
+                    'candidato_id'     => $convite->candidato_id,
+                    'aplicado_por'     => $convite->criado_por,
+                    'convite_id'       => $convite->id,
+                    'score_d'          => $data['score_d'],
+                    'score_i'          => $data['score_i'],
+                    'score_s'          => $data['score_s'],
+                    'score_c'          => $data['score_c'],
+                    'perfil_dominante' => $data['perfil_dominante'],
+                    'respostas'        => $data['respostas'] ?? null,
+                ]);
+            } else {
+                // Convite enviado pelo admin a um lead (Seja Franqueado)
+                DiscLeadResultado::create([
+                    'convite_id'       => $convite->id,
+                    'lead_id'          => $convite->lead_id,
+                    'score_d'          => $data['score_d'],
+                    'score_i'          => $data['score_i'],
+                    'score_s'          => $data['score_s'],
+                    'score_c'          => $data['score_c'],
+                    'perfil_dominante' => $data['perfil_dominante'],
+                    'respostas'        => $data['respostas'] ?? null,
+                ]);
+            }
 
             $convite->update(['status' => 'respondido']);
 
