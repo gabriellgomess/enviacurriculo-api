@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AdminFinanceiroController;
+use App\Http\Controllers\Api\CnpjController;
 use App\Http\Controllers\Api\AdminGestaoFranquiasController;
 use App\Http\Controllers\Api\AdminNotaFiscalController;
 use App\Http\Controllers\Api\AdminPermissionController;
@@ -82,6 +83,9 @@ Route::prefix('auth')->group(function () {
 // Cadastro público de empresas
 Route::post('empresas/cadastrar', \App\Http\Controllers\Api\RegisterEmpresaController::class)
     ->middleware('throttle:10,1');
+
+// Consulta de CNPJ — pública, com cache de 24h no backend
+Route::get('cnpj/{cnpj}', [CnpjController::class, 'show'])->middleware('throttle:30,1');
 
 // Lead público "Seja Franqueado" (home)
 Route::post('franquia-leads', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'store'])
