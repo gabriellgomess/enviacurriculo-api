@@ -56,6 +56,7 @@ class Franquia extends Model
         // Permissões e status
         'menus_permitidos',
         'active',
+        'created_by',
     ];
 
     protected $casts = [
@@ -85,6 +86,11 @@ class Franquia extends Model
     public function documentos()
     {
         return $this->hasMany(FranquiaDocumento::class);
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public function user()

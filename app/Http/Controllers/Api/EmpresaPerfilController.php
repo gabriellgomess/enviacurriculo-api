@@ -81,17 +81,22 @@ class EmpresaPerfilController extends Controller
         $request->validate(['logo' => 'required|image|max:2048']);
         $empresa = Empresa::findOrFail($this->tokenContextId($request));
 
+        // Remove logo anterior (suporta caminho relativo ou URL legada absoluta)
         if ($empresa->logo_url) {
-            $base = Storage::disk('public')->url('');
-            $oldPath = str_replace($base, '', $empresa->logo_url);
-            Storage::disk('public')->delete($oldPath);
+            $old = $empresa->logo_url;
+            // Se for URL absoluta legada, extrai o caminho relativo
+            if (str_starts_with($old, 'http')) {
+                $old = ltrim(parse_url($old, PHP_URL_PATH), '/');
+                $old = preg_replace('#^storage/#', '', $old);
+            }
+            Storage::disk('public')->delete($old);
         }
 
+        // Grava apenas o caminho relativo — URL computada no present()
         $path = $request->file('logo')->store('empresas/logos', 'public');
-        $url  = Storage::disk('public')->url($path);
-        $empresa->update(['logo_url' => $url]);
+        $empresa->update(['logo_url' => $path]);
 
-        return response()->json(['logo_url' => $url]);
+        return response()->json(['logo_url' => Storage::disk('public')->url($path)]);
     }
 
     private function present(Empresa $e): array
@@ -105,7 +110,11 @@ class EmpresaPerfilController extends Controller
             'email'            => $e->email,
             'telefone'         => $e->telefone,
             'descricao'        => $e->descricao,
-            'logo_url'         => $e->logo_url,
+            'logo_url'         => $e->logo_url
+                ? (str_starts_with($e->logo_url, 'http')
+                    ? $e->logo_url
+                    : Storage::disk('public')->url($e->logo_url))
+                : null,
             'cep'              => $e->cep,
             'rua'              => $e->rua,
             'logradouro'       => $e->rua, // alias para o frontend

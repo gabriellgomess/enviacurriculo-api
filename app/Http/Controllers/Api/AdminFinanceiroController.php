@@ -35,6 +35,16 @@ class AdminFinanceiroController extends Controller
             'valor'         => 'required|numeric|min:0',
         ]);
 
+        $exists = FinanceiroConfig::where('categoria', $categoria)
+            ->where('tipo_franquia', $data['tipo_franquia'])
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'message' => 'Já existe uma configuração de ' . $categoria . ' para este tipo de franquia. Use a edição para alterar o valor.',
+            ], 422);
+        }
+
         $config = FinanceiroConfig::create([
             ...$data,
             'categoria'  => $categoria,

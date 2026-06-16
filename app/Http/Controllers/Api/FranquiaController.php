@@ -43,7 +43,8 @@ class FranquiaController extends Controller
             $query->where('active', $request->boolean('active'));
         }
 
-        $franquias = $query->orderBy('nome')->paginate(20);
+        $perPage = min((int) $request->get('per_page', 20), 200);
+        $franquias = $query->with('createdBy:id,name')->orderBy('nome')->paginate($perPage);
 
         // Métricas para os cards do topo
         $meta = [
@@ -128,6 +129,7 @@ class FranquiaController extends Controller
                     'longitude'         => $coords['longitude']          ?? null,
                     'latitude_empresa'  => $coordsEmpresa['latitude']    ?? null,
                     'longitude_empresa' => $coordsEmpresa['longitude']   ?? null,
+                    'created_by'        => $request->user()->id,
                 ]
             ));
 
@@ -159,12 +161,14 @@ class FranquiaController extends Controller
 
     public function show(Franquia $franquia)
     {
+        $franquia->load('createdBy:id,name');
         $user = $franquia->user();
 
         return response()->json([
             ...$franquia->toArray(),
             'login_email' => $user?->email,
             'user_id'     => $user?->id,
+            'criado_por'  => $franquia->createdBy?->name,
         ]);
     }
 
