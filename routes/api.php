@@ -284,7 +284,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('vagas',                     [\App\Http\Controllers\Api\EmpresaVagaController::class, 'store']);
         Route::get('vagas/{id}',                 [\App\Http\Controllers\Api\EmpresaVagaController::class, 'show']);
         Route::put('vagas/{id}',                 [\App\Http\Controllers\Api\EmpresaVagaController::class, 'update']);
-        Route::patch('vagas/{id}/status',        [\App\Http\Controllers\Api\EmpresaVagaController::class, 'changeStatus']);
         Route::delete('vagas/{id}',              [\App\Http\Controllers\Api\EmpresaVagaController::class, 'destroy']);
 
         // Candidatos recebidos (Kanban)

@@ -137,17 +137,8 @@ class EmpresaVagaController extends Controller
         ]);
     }
 
-    public function changeStatus(Request $request, int $id)
-    {
-        $empresaId = $this->tokenContextId($request);
-
-        $data = $request->validate(['status' => 'required|in:aberta,em_andamento,fechada,cancelada']);
-
-        $vaga = Vaga::where('empresa_id', $empresaId)->findOrFail($id);
-        $vaga->update(['status' => self::STATUS_IN[$data['status']]]);
-
-        return response()->json(['message' => 'Status atualizado.', 'status' => $data['status']]);
-    }
+    // changeStatus removido: a empresa nao altera mais o status operacional da
+    // vaga. Apenas Admin e Franquia Premium podem (regra revisada com o cliente).
 
     public function destroy(Request $request, int $id)
     {
