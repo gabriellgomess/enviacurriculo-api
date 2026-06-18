@@ -352,8 +352,14 @@ Route::middleware('auth:sanctum')->group(function () {
         // Plano
         Route::get('plano',           [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'show']);
         Route::get('plano/catalogo',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'catalogo']);
+        Route::get('plano/utilizacao',[\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'planoUtilizacao']);
         Route::post('plano/upgrade',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'upgrade']);
         Route::get('faturamentos',    [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'faturamentos']);
+        Route::get('mensalidades',    [\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'mensalidades']);
+
+        // Relatorios
+        Route::get('relatorios/recrutamento',   [\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'recrutamento']);
+        Route::get('relatorios/taxa-conversao', [\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'taxaConversao']);
 
         // Sub-usuários
         Route::get('sub-usuarios',                  [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'index']);
