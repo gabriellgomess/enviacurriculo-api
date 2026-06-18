@@ -326,6 +326,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('parceiros',                       [EmpresaParceiroController::class, 'index']);
         Route::get('parceiros/{id}',                  [EmpresaParceiroController::class, 'show']);
         Route::post('parceiros/{id}/visualizacao',    [EmpresaParceiroController::class, 'visualizar']);
+
+        // Colaboradores
+        Route::get('colaboradores/aniversariantes',   [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'aniversariantes']);
+        Route::post('colaboradores/importar',         [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'importar']);
+        Route::get('colaboradores',                   [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'index']);
+        Route::post('colaboradores',                  [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'store']);
+        Route::put('colaboradores/{id}',              [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'update']);
+        Route::patch('colaboradores/{id}/status',     [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'updateStatus']);
+        Route::delete('colaboradores/{id}',           [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'destroy']);
     });
 
     /*
