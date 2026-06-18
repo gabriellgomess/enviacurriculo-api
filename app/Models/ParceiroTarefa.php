@@ -13,6 +13,7 @@ class ParceiroTarefa extends Model
         'titulo',
         'descricao',
         'data_tarefa',
+        'hora',
         'concluida',
     ];
 

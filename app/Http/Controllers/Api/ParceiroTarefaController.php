@@ -33,6 +33,7 @@ class ParceiroTarefaController extends Controller
             'titulo'      => 'required|string|max:255',
             'descricao'   => 'nullable|string|max:2000',
             'data_tarefa' => 'required|date',
+            'hora'        => 'nullable|date_format:H:i',
         ]);
 
         $tarefa = ParceiroTarefa::create([
@@ -40,6 +41,7 @@ class ParceiroTarefaController extends Controller
             'titulo'      => $data['titulo'],
             'descricao'   => $data['descricao'] ?? null,
             'data_tarefa' => $data['data_tarefa'],
+            'hora'        => $data['hora'] ?? null,
             'concluida'   => false,
         ]);
 
