@@ -7,8 +7,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Candidato;
 use App\Models\CandidatoParecer;
 use App\Models\Envio;
+use App\Models\User;
 use App\Models\Vaga;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class FranquiaCandidatoController extends Controller
 {
@@ -19,14 +23,71 @@ class FranquiaCandidatoController extends Controller
         return Vaga::where('franquia_id', $franquiaId)->pluck('id');
     }
 
+    /**
+     * Candidatos visiveis para a franquia: os que tem envio em vagas da
+     * franquia OU os cadastrados/possuidos por ela (banco proprio).
+     */
+    private function candidatosVisiveisQuery(int $franquiaId, \Illuminate\Support\Collection $vagaIds)
+    {
+        return Candidato::where(function ($q) use ($franquiaId, $vagaIds) {
+            $q->whereHas('envios', fn($s) => $s->whereIn('vaga_id', $vagaIds))
+              ->orWhere('franquia_id', $franquiaId);
+        });
+    }
+
+    // POST /franquia/candidatos  (cadastra novo curriculo no banco da franquia)
+    public function store(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+
+        $data = $request->validate([
+            'nome'           => 'required|string|max:255',
+            'email'          => 'nullable|email|max:255',
+            'telefone'       => 'nullable|string|max:20',
+            'cidade'         => 'nullable|string|max:100',
+            'uf'             => 'nullable|string|size:2',
+            'cargo_desejado' => 'nullable|string|max:100',
+        ]);
+
+        if (!empty($data['email']) && User::where('email', $data['email'])->exists()) {
+            return response()->json(['message' => 'Já existe um usuário com este e-mail.'], 422);
+        }
+
+        $candidato = DB::transaction(function () use ($data, $franquiaId, $request) {
+            // CV de banco nao tem login: User e apenas o portador de nome/email.
+            $user = User::create([
+                'name'     => $data['nome'],
+                'email'    => $data['email'] ?? ('cv_' . Str::uuid() . '@banco.local'),
+                'password' => Hash::make(Str::random(40)),
+                'active'   => false,
+            ]);
+
+            return Candidato::create([
+                'user_id'        => $user->id,
+                'franquia_id'    => $franquiaId,
+                'criado_por'     => $request->user()?->id,
+                'telefone'       => $data['telefone'] ?? null,
+                'cidade'         => $data['cidade'] ?? null,
+                'estado'         => $data['uf'] ?? null,
+                'cargo_desejado' => $data['cargo_desejado'] ?? null,
+                'active'         => true,
+            ]);
+        });
+
+        return response()->json([
+            'message' => 'Currículo inserido com sucesso.',
+            'data'    => ['id' => $candidato->id, 'nome' => $data['nome']],
+        ], 201);
+    }
+
     // GET /franquia/candidatos
     public function index(Request $request)
     {
         $franquiaId = $this->tokenContextId($request);
         $vagaIds    = $this->vagaIds($franquiaId);
 
-        $query = Candidato::with('user:id,name,email')
-            ->whereHas('envios', fn($q) => $q->whereIn('vaga_id', $vagaIds))
+        $query = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)
+            ->with('user:id,name,email')
             ->where('active', true);
 
         if ($request->filled('cargo')) {
@@ -127,12 +188,12 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $vagaIds    = $this->vagaIds($franquiaId);
 
-        $candidato = Candidato::with([
-            'user:id,name,email',
-            'documentos' => fn($q) => $q->where('ativo', true)->limit(1),
-        ])
-        ->whereHas('envios', fn($q) => $q->whereIn('vaga_id', $vagaIds))
-        ->findOrFail($id);
+        $candidato = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)
+            ->with([
+                'user:id,name,email',
+                'documentos' => fn($q) => $q->where('ativo', true)->limit(1),
+            ])
+            ->findOrFail($id);
 
         $candidaturas = Envio::with('vaga:id,titulo')
             ->where('candidato_id', $candidato->id)
@@ -170,8 +231,7 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $vagaIds    = $this->vagaIds($franquiaId);
 
-        $candidato = Candidato::whereHas('envios', fn($q) => $q->whereIn('vaga_id', $vagaIds))
-            ->findOrFail($id);
+        $candidato = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)->findOrFail($id);
 
         $validated = $request->validate([
             'cargo_desejado'            => 'nullable|string|max:100',

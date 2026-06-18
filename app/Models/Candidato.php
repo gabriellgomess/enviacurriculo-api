@@ -11,6 +11,8 @@ class Candidato extends Model
 
     protected $fillable = [
         'user_id',
+        'franquia_id',
+        'criado_por',
         'cpf',
         'nascimento',
         'telefone',

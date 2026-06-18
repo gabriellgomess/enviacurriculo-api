@@ -429,6 +429,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('candidatos/parecer/{id}',            [FranquiaCandidatoController::class, 'updateParecer']);
         Route::delete('candidatos/parecer/{id}',         [FranquiaCandidatoController::class, 'destroyParecer']);
         Route::get('candidatos',                         [FranquiaCandidatoController::class, 'index']);
+        Route::post('candidatos',                        [FranquiaCandidatoController::class, 'store']);
         Route::get('candidatos/{id}',                    [FranquiaCandidatoController::class, 'show']);
         Route::put('candidatos/{id}',                    [FranquiaCandidatoController::class, 'update']);
         Route::post('candidatos/{candidatoId}/vincular', [FranquiaCandidatoController::class, 'vincular']);
