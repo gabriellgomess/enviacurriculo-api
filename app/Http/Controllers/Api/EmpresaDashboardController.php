@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Empresa;
+use App\Models\EmpresaCurriculo;
 use App\Models\Envio;
 use App\Models\Vaga;
 use Illuminate\Http\Request;
@@ -22,20 +23,29 @@ class EmpresaDashboardController extends Controller
         // Vagas da empresa (ids para usar nos envios)
         $vagaIds = Vaga::where('empresa_id', $empresaId)->pluck('id');
 
-        // Envios (currículos recebidos) por canal — fonte ainda não foi implementada
-        // por enquanto retornamos só o total real
-        $totalRecebidos = Envio::whereIn('vaga_id', $vagaIds)->count();
+        // Currículos recebidos por canal — fonte é o Banco de Currículos da empresa
+        $recebidos = EmpresaCurriculo::where('empresa_id', $empresaId)
+            ->selectRaw("
+                COUNT(*) as total,
+                SUM(CASE WHEN origem = 'franquia'   THEN 1 ELSE 0 END) as franquia,
+                SUM(CASE WHEN origem = 'plataforma' THEN 1 ELSE 0 END) as plataforma,
+                SUM(CASE WHEN origem IN ('manual','copia_base') THEN 1 ELSE 0 END) as empresa
+            ")
+            ->first();
+
+        // Funil de conversão continua baseado nos envios (candidaturas em vagas)
+        $totalEnvios = Envio::whereIn('vaga_id', $vagaIds)->count();
 
         return response()->json([
             'data' => [
                 'recebidos' => [
-                    'total'      => $totalRecebidos,
-                    'franquia'   => 0,
-                    'plataforma' => $totalRecebidos,
-                    'empresa'    => 0,
+                    'total'      => (int) $recebidos->total,
+                    'franquia'   => (int) $recebidos->franquia,
+                    'plataforma' => (int) $recebidos->plataforma,
+                    'empresa'    => (int) $recebidos->empresa,
                 ],
                 'conversao' => [
-                    'recebidos'      => $totalRecebidos,
+                    'recebidos'      => $totalEnvios,
                     'entrevistados'  => 0,
                     'teste_pratico'  => 0,
                     'aprovados'      => 0,
