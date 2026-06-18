@@ -155,6 +155,20 @@ class VagaController extends Controller
         return response()->json($vaga->fresh());
     }
 
+    // POST /admin/vagas/{vaga}/convidar
+    public function convidarFranquias(Request $request, Vaga $vaga)
+    {
+        $data = $request->validate([
+            'franquia_ids'   => 'required|array',
+            'franquia_ids.*' => 'integer|exists:franquias,id',
+        ]);
+
+        // sync substitui a lista completa de convites da vaga
+        $vaga->franquiasCompartilhadas()->sync($data['franquia_ids']);
+
+        return response()->json(['message' => 'Franquias convidadas com sucesso.']);
+    }
+
     private function gerarCodigo(): string
     {
         $ultimo = Vaga::withTrashed()

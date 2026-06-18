@@ -186,6 +186,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Vagas
         Route::apiResource('vagas', VagaController::class);
         Route::patch('vagas/{vaga}/status', [VagaController::class, 'changeStatus']);
+        Route::post('vagas/{vaga}/convidar', [VagaController::class, 'convidarFranquias']);
 
         // Parceiros
         Route::apiResource('parceiros', AdminParceiroController::class);
