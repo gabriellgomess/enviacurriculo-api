@@ -366,16 +366,27 @@ class FranquiaCandidatoController extends Controller
             return response()->json(['message' => 'Sem permissão.'], 403);
         }
 
-        $request->validate([
-            'status' => 'required|in:enviado,visualizado,em_processo,aprovado,reprovado',
+        $data = $request->validate([
+            'status'           => 'required|in:enviado,visualizado,em_processo,em_entrevista,pendente,aprovado,reprovado,desistiu,reposicao',
+            'observacao'       => 'nullable|string',
+            'salario_aprovado' => 'nullable|numeric|min:0',
+            'data_admissao'    => 'nullable|date',
+            'data_saida'       => 'nullable|date',
         ]);
 
         $envio = Envio::where('candidato_id', $candidatoId)
             ->where('vaga_id', $vagaId)
             ->firstOrFail();
 
-        $envio->update(['status' => $request->status]);
+        // status sempre; demais campos apenas quando enviados pelo front
+        $envio->fill(['status' => $data['status']]);
+        foreach (['observacao', 'salario_aprovado', 'data_admissao', 'data_saida'] as $campo) {
+            if (array_key_exists($campo, $data)) {
+                $envio->{$campo} = $data[$campo];
+            }
+        }
+        $envio->save();
 
-        return response()->json(['message' => 'Status atualizado.', 'status' => $request->status]);
+        return response()->json(['message' => 'Status atualizado.', 'status' => $envio->status]);
     }
 }
