@@ -361,6 +361,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('relatorios/recrutamento',   [\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'recrutamento']);
         Route::get('relatorios/taxa-conversao', [\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'taxaConversao']);
 
+        // Aliases consumidos pelos relatorios (Relatorios.jsx)
+        Route::get('candidatos', [\App\Http\Controllers\Api\EmpresaCandidatoRecebidoController::class, 'index']); // alias de candidatos-recebidos
+        Route::get('biblioteca', [\App\Http\Controllers\Api\EmpresaBibliotecaController::class, 'documentosIndex']); // alias da lista de documentos
+
         // Sub-usuários
         Route::get('sub-usuarios',                  [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'index']);
         Route::post('sub-usuarios',                 [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'store']);
