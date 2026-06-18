@@ -341,6 +341,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('agenda/tarefas',          [\App\Http\Controllers\Api\EmpresaAgendaController::class, 'tarefasStore']);
         Route::patch('agenda/tarefas/{id}',    [\App\Http\Controllers\Api\EmpresaAgendaController::class, 'tarefasUpdate']);
         Route::delete('agenda/tarefas/{id}',   [\App\Http\Controllers\Api\EmpresaAgendaController::class, 'tarefasDestroy']);
+
+        // Entrevistas
+        Route::get('entrevistas',              [\App\Http\Controllers\Api\EmpresaEntrevistaController::class, 'index']);
+        Route::post('entrevistas',             [\App\Http\Controllers\Api\EmpresaEntrevistaController::class, 'store']);
+        Route::put('entrevistas/{id}',         [\App\Http\Controllers\Api\EmpresaEntrevistaController::class, 'update']);
+        Route::patch('entrevistas/{id}/status',[\App\Http\Controllers\Api\EmpresaEntrevistaController::class, 'updateStatus']);
+        Route::delete('entrevistas/{id}',      [\App\Http\Controllers\Api\EmpresaEntrevistaController::class, 'destroy']);
     });
 
     /*
