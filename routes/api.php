@@ -348,6 +348,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('entrevistas/{id}',         [\App\Http\Controllers\Api\EmpresaEntrevistaController::class, 'update']);
         Route::patch('entrevistas/{id}/status',[\App\Http\Controllers\Api\EmpresaEntrevistaController::class, 'updateStatus']);
         Route::delete('entrevistas/{id}',      [\App\Http\Controllers\Api\EmpresaEntrevistaController::class, 'destroy']);
+
+        // Plano
+        Route::get('plano',           [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'show']);
+        Route::get('plano/catalogo',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'catalogo']);
+        Route::post('plano/upgrade',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'upgrade']);
+        Route::get('faturamentos',    [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'faturamentos']);
     });
 
     /*
