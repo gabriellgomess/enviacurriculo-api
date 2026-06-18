@@ -44,6 +44,7 @@ use App\Http\Controllers\Api\ParceiroAgendaController;
 use App\Http\Controllers\Api\ParceiroDashboardController;
 use App\Http\Controllers\Api\ParceiroPerfilController;
 use App\Http\Controllers\Api\ParceiroServicoController;
+use App\Http\Controllers\Api\ParceiroTarefaController;
 use App\Http\Controllers\Api\RegisterCandidatoController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\UserController;
@@ -531,5 +532,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('agenda/{id}/confirmar',       [ParceiroAgendaController::class, 'confirmar']);
         Route::patch('agenda/{id}/concluir',        [ParceiroAgendaController::class, 'concluir']);
         Route::patch('agenda/{id}/cancelar',        [ParceiroAgendaController::class, 'cancelar']);
+
+        // Tarefas
+        Route::get('tarefas',                       [ParceiroTarefaController::class, 'index']);
+        Route::post('tarefas',                      [ParceiroTarefaController::class, 'store']);
+        Route::patch('tarefas/{id}/toggle',         [ParceiroTarefaController::class, 'toggle']);
+        Route::delete('tarefas/{id}',               [ParceiroTarefaController::class, 'destroy']);
     });
 });
