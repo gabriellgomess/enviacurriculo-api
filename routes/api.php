@@ -367,6 +367,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('beneficios',        [\App\Http\Controllers\Api\EmpresaBeneficioController::class, 'store']);
         Route::put('beneficios/{id}',    [\App\Http\Controllers\Api\EmpresaBeneficioController::class, 'update']);
         Route::delete('beneficios/{id}', [\App\Http\Controllers\Api\EmpresaBeneficioController::class, 'destroy']);
+
+        // Biblioteca — tipos e documentos
+        Route::get('biblioteca/tipos',                    [\App\Http\Controllers\Api\EmpresaBibliotecaController::class, 'tiposIndex']);
+        Route::post('biblioteca/tipos',                   [\App\Http\Controllers\Api\EmpresaBibliotecaController::class, 'tiposStore']);
+        Route::delete('biblioteca/tipos/{id}',            [\App\Http\Controllers\Api\EmpresaBibliotecaController::class, 'tiposDestroy']);
+        Route::get('biblioteca/documentos',               [\App\Http\Controllers\Api\EmpresaBibliotecaController::class, 'documentosIndex']);
+        Route::post('biblioteca/documentos',              [\App\Http\Controllers\Api\EmpresaBibliotecaController::class, 'documentosStore']);
+        Route::get('biblioteca/documentos/{id}/download', [\App\Http\Controllers\Api\EmpresaBibliotecaController::class, 'documentosDownload']);
+        Route::delete('biblioteca/documentos/{id}',       [\App\Http\Controllers\Api\EmpresaBibliotecaController::class, 'documentosDestroy']);
     });
 
     /*
