@@ -40,8 +40,18 @@ class AdminFinanceiroController extends Controller
             ->exists();
 
         if ($exists) {
+            $labels = [
+                'tx_marketing'      => 'TX de Marketing',
+                'tx_royalties'      => 'TX de Royalties',
+                'percentual_imposto'=> 'Percentual de Imposto',
+                'mensalidade'       => 'Mensalidade',
+            ];
+            $nome = $labels[$categoria] ?? $categoria;
+            $msg  = "Já existe uma configuração de {$nome} para este tipo de franquia. Use a edição para alterar o valor.";
+
             return response()->json([
-                'message' => 'Já existe uma configuração de ' . $categoria . ' para este tipo de franquia. Use a edição para alterar o valor.',
+                'message' => $msg,
+                'errors'  => ['tipo_franquia' => [$msg]],
             ], 422);
         }
 
