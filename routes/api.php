@@ -361,6 +361,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('sub-usuarios/{id}',             [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'update']);
         Route::patch('sub-usuarios/{id}/toggle-active', [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'toggleActive']);
         Route::delete('sub-usuarios/{id}',          [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'destroy']);
+
+        // Beneficios (oferecidos aos colaboradores)
+        Route::get('beneficios',         [\App\Http\Controllers\Api\EmpresaBeneficioController::class, 'index']);
+        Route::post('beneficios',        [\App\Http\Controllers\Api\EmpresaBeneficioController::class, 'store']);
+        Route::put('beneficios/{id}',    [\App\Http\Controllers\Api\EmpresaBeneficioController::class, 'update']);
+        Route::delete('beneficios/{id}', [\App\Http\Controllers\Api\EmpresaBeneficioController::class, 'destroy']);
     });
 
     /*
