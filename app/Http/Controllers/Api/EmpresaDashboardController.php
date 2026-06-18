@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Empresa;
+use App\Models\EmpresaColaborador;
 use App\Models\EmpresaCurriculo;
+use App\Models\EmpresaEntrevista;
 use App\Models\Envio;
 use App\Models\Vaga;
 use Illuminate\Http\Request;
@@ -55,8 +57,13 @@ class EmpresaDashboardController extends Controller
                 'vagas_ativas'        => Vaga::where('empresa_id', $empresaId)
                                             ->where('status', 'publicada')
                                             ->count(),
-                'entrevistas_semana'  => 0, // tabela entrevistas ainda não existe
-                'aniversariantes_mes' => 0, // tabela colaboradores ainda não existe
+                'entrevistas_semana'  => EmpresaEntrevista::where('empresa_id', $empresaId)
+                                            ->whereBetween('data', [now()->startOfWeek(), now()->endOfWeek()])
+                                            ->count(),
+                'aniversariantes_mes' => EmpresaColaborador::where('empresa_id', $empresaId)
+                                            ->whereNotNull('data_nascimento')
+                                            ->whereMonth('data_nascimento', now()->month)
+                                            ->count(),
                 'plano' => [
                     'chave'     => $empresa->plano,
                     'nome'      => 'Plano ' . ucfirst($empresa->plano ?? 'padrao'),
