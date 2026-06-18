@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Empresa;
+use App\Models\EmpresaFollowup;
 use App\Models\Franquia;
 use App\Models\User;
 use App\Models\UserRole;
@@ -224,5 +225,71 @@ class FranquiaEmpresaGestaoController extends Controller
         $empresa->update(['active' => !$empresa->active]);
 
         return response()->json(['message' => 'Empresa atualizada.', 'active' => $empresa->active]);
+    }
+
+    // GET /franquia/empresas/{id}/followups
+    public function indexFollowups(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresa    = Empresa::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $followups = EmpresaFollowup::where('empresa_id', $empresa->id)
+            ->orderBy('created_at')
+            ->get();
+
+        return response()->json(['data' => $followups]);
+    }
+
+    // POST /franquia/empresas/{id}/followups
+    public function storeFollowup(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresa    = Empresa::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $request->validate(['mensagem' => 'required|string']);
+
+        $followup = EmpresaFollowup::create([
+            'empresa_id' => $empresa->id,
+            'user_id'    => auth()->id(),
+            'user_name'  => Franquia::find($franquiaId)?->nome ?? auth()->user()->name,
+            'user_type'  => 'franquia',
+            'mensagem'   => $request->mensagem,
+        ]);
+
+        return response()->json($followup, 201);
+    }
+
+    // PUT /franquia/empresas/{id}/followups/{followupId}
+    public function updateFollowup(Request $request, int $id, int $followupId)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresa    = Empresa::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $request->validate(['mensagem' => 'required|string']);
+
+        $followup = EmpresaFollowup::where('empresa_id', $empresa->id)->findOrFail($followupId);
+        $followup->update(['mensagem' => $request->mensagem]);
+
+        return response()->json($followup);
+    }
+
+    // POST /franquia/empresas/{id}/reset-password
+    public function resetPassword(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $this->assertPremium($franquiaId);
+
+        $empresa = Empresa::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $request->validate(['password' => 'required|string|min:6']);
+
+        $user = $empresa->user();
+        if (!$user) {
+            abort(422, 'Esta empresa não possui usuário de acesso vinculado.');
+        }
+
+        $user->update(['password' => Hash::make($request->password)]);
+
+        return response()->json(['message' => 'Senha redefinida com sucesso.']);
     }
 }

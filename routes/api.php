@@ -384,6 +384,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('empresas/{id}',                      [FranquiaEmpresaGestaoController::class, 'show']);
         Route::put('empresas/{id}',                      [FranquiaEmpresaGestaoController::class, 'update']);
         Route::patch('empresas/{id}/toggle-active',      [FranquiaEmpresaGestaoController::class, 'toggleActive']);
+        Route::post('empresas/{id}/reset-password',      [FranquiaEmpresaGestaoController::class, 'resetPassword']);
+        Route::get('empresas/{id}/followups',                  [FranquiaEmpresaGestaoController::class, 'indexFollowups']);
+        Route::post('empresas/{id}/followups',                 [FranquiaEmpresaGestaoController::class, 'storeFollowup']);
+        Route::put('empresas/{id}/followups/{followupId}',     [FranquiaEmpresaGestaoController::class, 'updateFollowup']);
 
         // Parceiros
         Route::get('parceiros',                          [FranquiaParceiroGestaoController::class, 'index']);
