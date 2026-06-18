@@ -335,6 +335,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('colaboradores/{id}',              [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'update']);
         Route::patch('colaboradores/{id}/status',     [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'updateStatus']);
         Route::delete('colaboradores/{id}',           [\App\Http\Controllers\Api\EmpresaColaboradorController::class, 'destroy']);
+
+        // Agenda — tarefas
+        Route::get('agenda/tarefas',           [\App\Http\Controllers\Api\EmpresaAgendaController::class, 'tarefasIndex']);
+        Route::post('agenda/tarefas',          [\App\Http\Controllers\Api\EmpresaAgendaController::class, 'tarefasStore']);
+        Route::patch('agenda/tarefas/{id}',    [\App\Http\Controllers\Api\EmpresaAgendaController::class, 'tarefasUpdate']);
+        Route::delete('agenda/tarefas/{id}',   [\App\Http\Controllers\Api\EmpresaAgendaController::class, 'tarefasDestroy']);
     });
 
     /*
