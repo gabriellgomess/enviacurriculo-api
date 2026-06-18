@@ -354,6 +354,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('plano/catalogo',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'catalogo']);
         Route::post('plano/upgrade',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'upgrade']);
         Route::get('faturamentos',    [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'faturamentos']);
+
+        // Sub-usuários
+        Route::get('sub-usuarios',                  [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'index']);
+        Route::post('sub-usuarios',                 [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'store']);
+        Route::put('sub-usuarios/{id}',             [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'update']);
+        Route::patch('sub-usuarios/{id}/toggle-active', [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'toggleActive']);
+        Route::delete('sub-usuarios/{id}',          [\App\Http\Controllers\Api\EmpresaSubUsuarioController::class, 'destroy']);
     });
 
     /*
