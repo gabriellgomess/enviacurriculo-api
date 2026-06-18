@@ -193,7 +193,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('parceiros/{parceiro}/toggle-active', [AdminParceiroController::class, 'toggleActive']);
 
         // Currículos (Candidatos)
-        Route::apiResource('candidatos', CandidatoController::class)->except(['store']);
+        Route::apiResource('candidatos', CandidatoController::class);
         Route::patch('candidatos/{candidato}/toggle-active', [CandidatoController::class, 'toggleActive']);
         Route::get('candidatos/{candidato}/documentos/{documento}/download', [CandidatoController::class, 'downloadDocumento']);
 

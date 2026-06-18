@@ -7,8 +7,10 @@ use App\Models\Candidato;
 use App\Models\CandidatoDocumento;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class CandidatoController extends Controller
 {
@@ -48,6 +50,108 @@ class CandidatoController extends Controller
         return response()->json([
             'data' => $candidatos->items(),
             'meta' => array_merge($candidatos->toArray(), $meta),
+        ]);
+    }
+
+    // POST /admin/candidatos  (insere curriculo no banco global pelo admin)
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'nome'                     => 'required|string|max:255',
+            'email'                    => 'nullable|email|max:255',
+            'telefone'                 => 'nullable|string|max:20',
+            'cep'                      => 'nullable|string|max:9',
+            'rua'                      => 'nullable|string|max:255',
+            'numero'                   => 'nullable|string|max:20',
+            'bairro'                   => 'nullable|string|max:100',
+            'complemento'              => 'nullable|string|max:100',
+            'cidade'                   => 'nullable|string|max:100',
+            'uf'                       => 'nullable|string|size:2',
+            'tipo_cnh'                 => 'nullable|string|max:10',
+            'status'                   => 'nullable|in:ativo,inativo',
+            'cargos_interesse'         => 'nullable|array|max:8',
+            'cargos_interesse.*'       => 'string|max:100',
+            'informacoes_pessoais'     => 'nullable|string',
+            'experiencia_profissional' => 'nullable|string',
+            'educacao'                 => 'nullable|string',
+            'habilidades'              => 'nullable|string',
+            'idiomas'                  => 'nullable|string|max:500',
+            'informacoes_adicionais'   => 'nullable|string',
+            'arquivo'                  => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'arquivo_cnh'              => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'arquivo_ctps'             => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'arquivos_diploma'         => 'nullable|array',
+            'arquivos_diploma.*'       => 'file|mimes:pdf,jpg,jpeg,png|max:5120',
+        ]);
+
+        if (!empty($data['email']) && User::where('email', $data['email'])->exists()) {
+            return response()->json(['message' => 'Já existe um usuário com este e-mail.'], 422);
+        }
+
+        $candidato = DB::transaction(function () use ($data, $request) {
+            $user = User::create([
+                'name'     => $data['nome'],
+                'email'    => $data['email'] ?? ('cv_' . Str::uuid() . '@banco.local'),
+                'password' => Hash::make(Str::random(40)),
+                'active'   => false,
+            ]);
+
+            $cargos = $data['cargos_interesse'] ?? null;
+
+            $candidato = Candidato::create([
+                'user_id'                  => $user->id,
+                'franquia_id'              => null, // inserido pelo admin (banco global)
+                'criado_por'               => $request->user()?->id,
+                'telefone'                 => $data['telefone'] ?? null,
+                'cep'                      => $data['cep'] ?? null,
+                'rua'                      => $data['rua'] ?? null,
+                'numero'                   => $data['numero'] ?? null,
+                'bairro'                   => $data['bairro'] ?? null,
+                'complemento'              => $data['complemento'] ?? null,
+                'cidade'                   => $data['cidade'] ?? null,
+                'estado'                   => $data['uf'] ?? null,
+                'tipo_cnh'                 => $data['tipo_cnh'] ?? null,
+                'active'                   => ($data['status'] ?? 'ativo') === 'ativo',
+                'cargo_desejado'           => $cargos ? ($cargos[0] ?? null) : null,
+                'cargos_interesse'         => $cargos,
+                'apresentacao'             => $data['informacoes_pessoais'] ?? null,
+                'experiencia_profissional' => $data['experiencia_profissional'] ?? null,
+                'educacao'                 => $data['educacao'] ?? null,
+                'habilidades'              => $data['habilidades'] ?? null,
+                'idiomas'                  => $data['idiomas'] ?? null,
+                'informacoes_adicionais'   => $data['informacoes_adicionais'] ?? null,
+            ]);
+
+            $uploads = ['arquivo' => 'curriculo', 'arquivo_cnh' => 'cnh', 'arquivo_ctps' => 'ctps'];
+            foreach ($uploads as $campo => $tipo) {
+                if ($request->hasFile($campo)) {
+                    $this->salvarDocumento($candidato, $request->file($campo), $tipo);
+                }
+            }
+            if ($request->hasFile('arquivos_diploma')) {
+                foreach ($request->file('arquivos_diploma') as $file) {
+                    $this->salvarDocumento($candidato, $file, 'diploma');
+                }
+            }
+
+            return $candidato;
+        });
+
+        return response()->json([
+            'message' => 'Currículo inserido com sucesso.',
+            'data'    => ['id' => $candidato->id, 'nome' => $data['nome']],
+        ], 201);
+    }
+
+    private function salvarDocumento(Candidato $candidato, $file, string $tipo): void
+    {
+        CandidatoDocumento::create([
+            'candidato_id' => $candidato->id,
+            'tipo'         => $tipo,
+            'arquivo_path' => $file->store("candidatos/{$candidato->id}", 'public'),
+            'arquivo_nome' => $file->getClientOriginalName(),
+            'tamanho_kb'   => (int) round($file->getSize() / 1024),
+            'ativo'        => true,
         ]);
     }
 
