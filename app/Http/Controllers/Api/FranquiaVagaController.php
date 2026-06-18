@@ -113,6 +113,7 @@ class FranquiaVagaController extends Controller
             ->firstOrFail();
 
         $vaga = Vaga::create([
+            'codigo'          => $this->gerarCodigo(),
             'franquia_id'     => $franquiaId,
             'empresa_id'      => $empresa->id,
             'titulo'          => $validated['titulo'],
@@ -139,6 +140,17 @@ class FranquiaVagaController extends Controller
             'message' => 'Vaga criada com sucesso.',
             'vaga'    => $vaga,
         ], 201);
+    }
+
+    private function gerarCodigo(): string
+    {
+        $ultimo = Vaga::withTrashed()
+            ->where('codigo', 'like', 'VG-%')
+            ->orderByDesc('id')
+            ->value('codigo');
+
+        $numero = $ultimo ? (int) substr($ultimo, 3) + 1 : 1;
+        return 'VG-' . str_pad($numero, 4, '0', STR_PAD_LEFT);
     }
 
     // GET /franquia/vagas/niveis
