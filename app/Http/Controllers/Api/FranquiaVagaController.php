@@ -17,22 +17,39 @@ class FranquiaVagaController extends Controller
 {
     use HasTokenContext;
 
+    /** Aborta com 403 se a franquia nao for Premium. */
+    private function assertPremium(int $franquiaId, string $mensagem): void
+    {
+        $franquia = Franquia::findOrFail($franquiaId);
+        if ($franquia->tipo !== 'premium') {
+            abort(response()->json(['message' => $mensagem], 403));
+        }
+    }
+
     // GET /franquia/vagas
     public function index(Request $request)
     {
         $franquiaId = $this->tokenContextId($request);
 
+        // Nova regra: todos os perfis visualizam todas as vagas cadastradas.
         $query = Vaga::with(['empresa:id,razao_social,nome_fantasia', 'franquiasCompartilhadas'])
-            ->where(function ($q) use ($franquiaId) {
-                $q->where('franquia_id', $franquiaId)
-                  ->orWhereHas('franquiasCompartilhadas', function ($sub) use ($franquiaId) {
-                      $sub->where('franquias.id', $franquiaId);
-                  });
-            })
             ->withCount('envios as total_candidatos');
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            if ($request->status === 'ativa') {
+                $query->where('status', 'publicada');
+            } elseif ($request->status === 'inativa') {
+                $query->where('status', '!=', 'publicada');
+            } else {
+                $query->where('status', $request->status);
+            }
+        }
+        if ($request->filled('convite')) {
+            if ($request->convite === 'sim') {
+                $query->whereHas('franquiasCompartilhadas', fn($q) => $q->where('franquias.id', $franquiaId));
+            } elseif ($request->convite === 'nao') {
+                $query->whereDoesntHave('franquiasCompartilhadas', fn($q) => $q->where('franquias.id', $franquiaId));
+            }
         }
         if ($request->filled('cidade')) {
             $query->where('cidade', 'like', '%' . $request->cidade . '%');
@@ -67,7 +84,8 @@ class FranquiaVagaController extends Controller
             'status'            => $v->status,
             'expira_em'         => $v->data_fechamento,
             'created_at'        => $v->created_at,
-            'is_shared'         => $v->franquia_id !== $franquiaId,
+            'is_owner'          => $v->franquia_id === $franquiaId,
+            'is_invited'        => $v->franquiasCompartilhadas->contains('id', $franquiaId),
             'shared_with'       => $v->franquiasCompartilhadas->map(fn($f) => ['id' => $f->id, 'nome' => $f->nome]),
         ]);
 
@@ -86,6 +104,7 @@ class FranquiaVagaController extends Controller
     public function store(Request $request)
     {
         $franquiaId = $this->tokenContextId($request);
+        $this->assertPremium($franquiaId, 'Apenas franquias Premium podem criar vagas.');
 
         $validated = $request->validate([
             'empresa_id'       => 'required|integer',
@@ -261,6 +280,7 @@ class FranquiaVagaController extends Controller
     public function toggleAtiva(Request $request, int $id)
     {
         $franquiaId = $this->tokenContextId($request);
+        $this->assertPremium($franquiaId, 'Apenas franquias Premium podem alterar o status da vaga.');
         $vaga = Vaga::where('franquia_id', $franquiaId)->findOrFail($id);
 
         $novoStatus = $vaga->status === 'publicada' ? 'rascunho' : 'publicada';
@@ -399,6 +419,7 @@ class FranquiaVagaController extends Controller
     public function compartilhar(Request $request, int $id)
     {
         $franquiaId = $this->tokenContextId($request);
+        $this->assertPremium($franquiaId, 'Apenas franquias Premium podem convidar franquias.');
         $vaga = Vaga::where('franquia_id', $franquiaId)->findOrFail($id);
 
         $request->validate([
