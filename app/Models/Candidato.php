@@ -27,6 +27,9 @@ class Candidato extends Model
         'experiencia_profissional',
         'educacao',
         'habilidades',
+        'idiomas',
+        'informacoes_adicionais',
+        'cargos_interesse',
         'cargo_desejado',
         'apresentacao',
         'linkedin',
@@ -52,6 +55,7 @@ class Candidato extends Model
         'pretensao_salarial'=> 'float',
         'latitude'          => 'float',
         'longitude'         => 'float',
+        'cargos_interesse'  => 'array',
     ];
 
     public function getLogradouroAttribute(): ?string
@@ -67,6 +71,11 @@ class Candidato extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function franquia()
+    {
+        return $this->belongsTo(Franquia::class);
     }
 
     public function documentos()

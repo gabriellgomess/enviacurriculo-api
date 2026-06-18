@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
+use App\Models\CandidatoDocumento;
 use App\Models\CandidatoParecer;
 use App\Models\Envio;
 use App\Models\User;
@@ -41,12 +42,32 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
 
         $data = $request->validate([
-            'nome'           => 'required|string|max:255',
-            'email'          => 'nullable|email|max:255',
-            'telefone'       => 'nullable|string|max:20',
-            'cidade'         => 'nullable|string|max:100',
-            'uf'             => 'nullable|string|size:2',
-            'cargo_desejado' => 'nullable|string|max:100',
+            'nome'                     => 'required|string|max:255',
+            'email'                    => 'nullable|email|max:255',
+            'telefone'                 => 'nullable|string|max:20',
+            'cep'                      => 'nullable|string|max:9',
+            'rua'                      => 'nullable|string|max:255',
+            'numero'                   => 'nullable|string|max:20',
+            'bairro'                   => 'nullable|string|max:100',
+            'complemento'              => 'nullable|string|max:100',
+            'cidade'                   => 'nullable|string|max:100',
+            'uf'                       => 'nullable|string|size:2',
+            'tipo_cnh'                 => 'nullable|string|max:10',
+            'status'                   => 'nullable|in:ativo,inativo',
+            'cargos_interesse'         => 'nullable|array|max:8',
+            'cargos_interesse.*'       => 'string|max:100',
+            'informacoes_pessoais'     => 'nullable|string',
+            'experiencia_profissional' => 'nullable|string',
+            'educacao'                 => 'nullable|string',
+            'habilidades'              => 'nullable|string',
+            'idiomas'                  => 'nullable|string|max:500',
+            'informacoes_adicionais'   => 'nullable|string',
+            // arquivos
+            'arquivo'                  => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'arquivo_cnh'              => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'arquivo_ctps'             => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'arquivos_diploma'         => 'nullable|array',
+            'arquivos_diploma.*'       => 'file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
         if (!empty($data['email']) && User::where('email', $data['email'])->exists()) {
@@ -62,22 +83,78 @@ class FranquiaCandidatoController extends Controller
                 'active'   => false,
             ]);
 
-            return Candidato::create([
-                'user_id'        => $user->id,
-                'franquia_id'    => $franquiaId,
-                'criado_por'     => $request->user()?->id,
-                'telefone'       => $data['telefone'] ?? null,
-                'cidade'         => $data['cidade'] ?? null,
-                'estado'         => $data['uf'] ?? null,
-                'cargo_desejado' => $data['cargo_desejado'] ?? null,
-                'active'         => true,
+            $cargos = $data['cargos_interesse'] ?? null;
+
+            $candidato = Candidato::create([
+                'user_id'                  => $user->id,
+                'franquia_id'              => $franquiaId,
+                'criado_por'               => $request->user()?->id,
+                'telefone'                 => $data['telefone'] ?? null,
+                'cep'                      => $data['cep'] ?? null,
+                'rua'                      => $data['rua'] ?? null,
+                'numero'                   => $data['numero'] ?? null,
+                'bairro'                   => $data['bairro'] ?? null,
+                'complemento'              => $data['complemento'] ?? null,
+                'cidade'                   => $data['cidade'] ?? null,
+                'estado'                   => $data['uf'] ?? null,
+                'tipo_cnh'                 => $data['tipo_cnh'] ?? null,
+                'active'                   => ($data['status'] ?? 'ativo') === 'ativo',
+                // cargo_desejado mantido para compatibilidade (1o cargo de interesse)
+                'cargo_desejado'           => $cargos ? ($cargos[0] ?? null) : null,
+                'cargos_interesse'         => $cargos,
+                // a coluna real e 'apresentacao'; o form envia 'informacoes_pessoais'
+                'apresentacao'             => $data['informacoes_pessoais'] ?? null,
+                'experiencia_profissional' => $data['experiencia_profissional'] ?? null,
+                'educacao'                 => $data['educacao'] ?? null,
+                'habilidades'              => $data['habilidades'] ?? null,
+                'idiomas'                  => $data['idiomas'] ?? null,
+                'informacoes_adicionais'   => $data['informacoes_adicionais'] ?? null,
             ]);
+
+            $this->processarUploads($candidato, $request);
+
+            return $candidato;
         });
 
         return response()->json([
             'message' => 'Currículo inserido com sucesso.',
             'data'    => ['id' => $candidato->id, 'nome' => $data['nome']],
         ], 201);
+    }
+
+    /**
+     * Salva os arquivos enviados (curriculo/cnh/ctps/diplomas) como
+     * CandidatoDocumento no disco public (unico volume persistido na VPS).
+     */
+    private function processarUploads(Candidato $candidato, Request $request): void
+    {
+        $simples = ['arquivo' => 'curriculo', 'arquivo_cnh' => 'cnh', 'arquivo_ctps' => 'ctps'];
+
+        foreach ($simples as $campo => $tipo) {
+            if ($request->hasFile($campo)) {
+                $this->salvarDocumento($candidato, $request->file($campo), $tipo);
+            }
+        }
+
+        if ($request->hasFile('arquivos_diploma')) {
+            foreach ($request->file('arquivos_diploma') as $file) {
+                $this->salvarDocumento($candidato, $file, 'diploma');
+            }
+        }
+    }
+
+    private function salvarDocumento(Candidato $candidato, $file, string $tipo): void
+    {
+        $path = $file->store("candidatos/{$candidato->id}", 'public');
+
+        CandidatoDocumento::create([
+            'candidato_id' => $candidato->id,
+            'tipo'         => $tipo,
+            'arquivo_path' => $path,
+            'arquivo_nome' => $file->getClientOriginalName(),
+            'tamanho_kb'   => (int) round($file->getSize() / 1024),
+            'ativo'        => true,
+        ]);
     }
 
     // GET /franquia/candidatos
@@ -106,6 +183,9 @@ class FranquiaCandidatoController extends Controller
         $items = $candidatos->getCollection()->map(fn($c) => [
             'id'               => $c->id,
             'nome'             => $c->user?->name,
+            'email'            => $c->user?->email,
+            'telefone'         => $c->telefone,
+            'status'           => $c->active ? 'ativo' : 'inativo',
             'cpf'              => $c->cpf,
             'cargo_desejado'   => $c->cargo_desejado,
             'cidade'           => $c->cidade,
@@ -191,7 +271,8 @@ class FranquiaCandidatoController extends Controller
         $candidato = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)
             ->with([
                 'user:id,name,email',
-                'documentos' => fn($q) => $q->where('ativo', true)->limit(1),
+                'franquia:id,nome',
+                'documentos' => fn($q) => $q->where('ativo', true),
             ])
             ->findOrFail($id);
 
@@ -207,7 +288,8 @@ class FranquiaCandidatoController extends Controller
                 'updated_at' => $e->updated_at,
             ]);
 
-        $curriculo = $candidato->documentos->first();
+        $curriculo = $candidato->documentos->firstWhere('tipo', 'curriculo')
+            ?? $candidato->documentos->first();
 
         return response()->json(['data' => [
             'id'                       => $candidato->id,
@@ -215,12 +297,32 @@ class FranquiaCandidatoController extends Controller
             'email'                    => $candidato->user?->email,
             'telefone'                 => $candidato->telefone,
             'cpf'                      => $candidato->cpf,
-            'nascimento'               => $candidato->data_nascimento,
-            'cargo_desejado'           => $candidato->cargo_desejado,
+            'nascimento'               => $candidato->nascimento,
+            'status'                   => $candidato->active ? 'ativo' : 'inativo',
+            'cep'                      => $candidato->cep,
+            'rua'                      => $candidato->rua,
+            'numero'                   => $candidato->numero,
+            'bairro'                   => $candidato->bairro,
+            'complemento'              => $candidato->complemento,
             'cidade'                   => $candidato->cidade,
             'estado'                   => $candidato->estado,
+            'tipo_cnh'                 => $candidato->tipo_cnh,
+            'cargo_desejado'           => $candidato->cargo_desejado,
+            'cargos_interesse'         => $candidato->cargos_interesse ?? [],
+            'informacoes_pessoais'     => $candidato->apresentacao,
+            'experiencia_profissional' => $candidato->experiencia_profissional,
+            'educacao'                 => $candidato->educacao,
+            'habilidades'              => $candidato->habilidades,
+            'idiomas'                  => $candidato->idiomas,
+            'informacoes_adicionais'   => $candidato->informacoes_adicionais,
             'disponibilidade'          => $candidato->disponibilidade,
+            'franquia_responsavel'     => $candidato->franquia?->nome,
             'curriculo_ativo'          => $curriculo ? ['id' => $curriculo->id, 'arquivo_nome' => $curriculo->arquivo_nome] : null,
+            'documentos'               => $candidato->documentos->map(fn($d) => [
+                'id'           => $d->id,
+                'tipo'         => $d->tipo,
+                'arquivo_nome' => $d->arquivo_nome,
+            ])->values(),
             'candidaturas'             => $candidaturas,
         ]]);
     }
@@ -240,14 +342,25 @@ class FranquiaCandidatoController extends Controller
             'bairro'                    => 'nullable|string|max:100',
             'rua'                       => 'nullable|string|max:255',
             'numero'                    => 'nullable|string|max:20',
+            'complemento'               => 'nullable|string|max:100',
             'cidade'                    => 'nullable|string|max:100',
             'estado'                    => 'nullable|string|size:2',
+            'tipo_cnh'                  => 'nullable|string|max:10',
+            'cargos_interesse'          => 'nullable|array|max:8',
+            'cargos_interesse.*'        => 'string|max:100',
             'informacoes_pessoais'      => 'nullable|string',
             'experiencia_profissional'  => 'nullable|string',
             'educacao'                  => 'nullable|string',
             'habilidades'               => 'nullable|string',
+            'idiomas'                   => 'nullable|string|max:500',
             'informacoes_adicionais'    => 'nullable|string',
         ]);
+
+        // a coluna real e 'apresentacao'; o form envia 'informacoes_pessoais'
+        if (array_key_exists('informacoes_pessoais', $validated)) {
+            $validated['apresentacao'] = $validated['informacoes_pessoais'];
+            unset($validated['informacoes_pessoais']);
+        }
 
         $candidato->update($validated);
 
@@ -270,13 +383,10 @@ class FranquiaCandidatoController extends Controller
         $curriculo = $candidato->documentos()->where('ativo', true)->first()
             ?? $candidato->documentos()->latest()->first();
 
-        if (!$curriculo) {
-            return response()->json(['message' => 'Candidato não possui currículo cadastrado.'], 422);
-        }
-
+        // Permite vincular candidatos do banco que ainda nao tem curriculo anexado.
         $envio = Envio::firstOrCreate(
             ['candidato_id' => $candidato->id, 'vaga_id' => $request->vaga_id],
-            ['curriculo_id' => $curriculo->id, 'status' => 'enviado']
+            ['curriculo_id' => $curriculo?->id, 'status' => 'enviado']
         );
 
         return response()->json([
@@ -312,7 +422,7 @@ class FranquiaCandidatoController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
-        $pareceres = CandidatoParecer::with(['criador:id,name', 'vaga:id,titulo', 'franquia:id,nome'])
+        $pareceres = CandidatoParecer::with(['criador:id,name', 'vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social', 'franquia:id,nome'])
             ->where('candidato_id', $id)
             ->orderByDesc('created_at')
             ->get()
@@ -323,6 +433,7 @@ class FranquiaCandidatoController extends Controller
                     'parecer'           => $isOwn ? $p->texto : '[Conteúdo restrito à franquia de origem]',
                     'nota'              => $isOwn ? $p->nota : null,
                     'cargo_pretendido'  => $p->vaga?->titulo,
+                    'empresa_nome'      => $p->vaga?->empresa?->razao_social,
                     'criado_por_nome'   => $p->criador?->name,
                     'franquia_nome'     => $p->franquia?->nome ?? 'Outra Franquia',
                     'is_own'            => $isOwn,

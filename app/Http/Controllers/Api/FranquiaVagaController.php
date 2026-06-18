@@ -309,13 +309,10 @@ class FranquiaVagaController extends Controller
         $curriculo = $candidato->documentos()->where('ativo', true)->first()
             ?? $candidato->documentos()->latest()->first();
 
-        if (!$curriculo) {
-            return response()->json(['message' => 'Candidato não possui currículo cadastrado.'], 422);
-        }
-
+        // Permite vincular candidatos do banco que ainda nao tem curriculo anexado.
         $envio = Envio::firstOrCreate(
             ['candidato_id' => $candidato->id, 'vaga_id' => $vaga->id],
-            ['curriculo_id' => $curriculo->id, 'status' => 'enviado']
+            ['curriculo_id' => $curriculo?->id, 'status' => 'enviado']
         );
 
         return response()->json([
