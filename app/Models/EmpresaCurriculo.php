@@ -13,9 +13,14 @@ class EmpresaCurriculo extends Model
         'cidade', 'estado', 'bairro', 'cargos_interesse',
         'experiencia_profissional', 'educacao', 'habilidades',
         'origem', 'arquivo_path', 'arquivo_nome',
+        'cep', 'rua', 'numero', 'complemento', 'tipo_cnh',
+        'informacoes_pessoais', 'idiomas', 'informacoes_adicionais', 'active',
     ];
 
-    protected $casts = ['cargos_interesse' => 'array'];
+    protected $casts = [
+        'cargos_interesse' => 'array',
+        'active'           => 'boolean',
+    ];
 
     public function candidato()   { return $this->belongsTo(Candidato::class); }
     public function kanbanEtapa() { return $this->belongsTo(KanbanEtapa::class); }

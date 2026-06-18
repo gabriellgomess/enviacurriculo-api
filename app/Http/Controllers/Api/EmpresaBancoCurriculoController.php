@@ -65,11 +65,24 @@ class EmpresaBancoCurriculoController extends Controller
             'cidade'                   => 'nullable|string|max:100',
             'estado'                   => 'nullable|string|size:2',
             'bairro'                   => 'nullable|string|max:100',
+            'cep'                      => 'nullable|string|max:9',
+            'rua'                      => 'nullable|string|max:255',
+            'numero'                   => 'nullable|string|max:20',
+            'complemento'              => 'nullable|string|max:100',
+            'tipo_cnh'                 => 'nullable|string|max:10',
+            'informacoes_pessoais'     => 'nullable|string',
+            'idiomas'                  => 'nullable|string|max:500',
+            'informacoes_adicionais'   => 'nullable|string',
+            'status'                   => 'nullable|in:ativo,inativo',
             'origem'                   => 'nullable|in:manual,copia_base',
-            'arquivo'                  => 'nullable|file|max:5120|mimes:pdf,doc,docx',
+            'arquivo'                  => 'nullable|file|max:10240|mimes:pdf,doc,docx',
         ]);
 
-        $extra = ['empresa_id' => $empresaId, 'origem' => $data['origem'] ?? 'manual'];
+        $extra = [
+            'empresa_id' => $empresaId,
+            'origem'     => $data['origem'] ?? 'manual',
+            'active'     => ($data['status'] ?? 'ativo') === 'ativo',
+        ];
 
         if ($request->hasFile('arquivo')) {
             $arquivo = $request->file('arquivo');
@@ -78,7 +91,7 @@ class EmpresaBancoCurriculoController extends Controller
         }
 
         $curriculo = EmpresaCurriculo::create([
-            ...collect($data)->except(['arquivo', 'origem'])->all(),
+            ...collect($data)->except(['arquivo', 'origem', 'status'])->all(),
             ...$extra,
         ]);
 
@@ -271,6 +284,15 @@ class EmpresaBancoCurriculoController extends Controller
             'cidade'                   => $c->cidade,
             'estado'                   => $c->estado,
             'bairro'                   => $c->bairro,
+            'cep'                      => $c->cep,
+            'rua'                      => $c->rua,
+            'numero'                   => $c->numero,
+            'complemento'              => $c->complemento,
+            'tipo_cnh'                 => $c->tipo_cnh,
+            'informacoes_pessoais'     => $c->informacoes_pessoais,
+            'idiomas'                  => $c->idiomas,
+            'informacoes_adicionais'   => $c->informacoes_adicionais,
+            'status'                   => $c->active ? 'ativo' : 'inativo',
             'origem'                   => $c->origem,
             'arquivo_nome'             => $c->arquivo_nome,
             'created_at'               => $c->created_at,
