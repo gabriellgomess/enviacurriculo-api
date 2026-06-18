@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
+use App\Models\CandidatoDocumento;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -19,7 +20,18 @@ class CandidatoPerfilController extends Controller
     {
         $c = $this->candidatoDoUsuario();
         $c->load('user:id,name,email,phone');
-        return response()->json(['data' => $c]);
+
+        $doc = CandidatoDocumento::where('candidato_id', $c->id)
+            ->where('tipo', 'curriculo')
+            ->where('ativo', true)
+            ->latest()
+            ->first();
+
+        $data = $c->toArray();
+        $data['curriculo_nome'] = $doc?->arquivo_nome;
+        $data['curriculo_url']  = $doc ? Storage::disk('public')->url($doc->arquivo_path) : null;
+
+        return response()->json(['data' => $data]);
     }
 
     // PUT /candidato/perfil
@@ -92,5 +104,40 @@ class CandidatoPerfilController extends Controller
         $c->update(['foto_url' => $url]);
 
         return response()->json(['foto' => $url]);
+    }
+
+    // POST /candidato/perfil/curriculo
+    public function uploadCurriculo(Request $request)
+    {
+        $request->validate(['arquivo' => 'required|file|mimes:pdf,doc,docx|max:10240']);
+        $c = $this->candidatoDoUsuario();
+
+        // Desativa o curriculo anterior (se existir)
+        $antigo = CandidatoDocumento::where('candidato_id', $c->id)
+            ->where('tipo', 'curriculo')
+            ->where('ativo', true)
+            ->first();
+
+        if ($antigo) {
+            Storage::disk('public')->delete($antigo->arquivo_path);
+            $antigo->update(['ativo' => false]);
+        }
+
+        $file = $request->file('arquivo');
+        $path = $file->store("candidatos/{$c->id}", 'public');
+
+        $doc = CandidatoDocumento::create([
+            'candidato_id' => $c->id,
+            'tipo'         => 'curriculo',
+            'arquivo_path' => $path,
+            'arquivo_nome' => $file->getClientOriginalName(),
+            'tamanho_kb'   => (int) round($file->getSize() / 1024),
+            'ativo'        => true,
+        ]);
+
+        return response()->json([
+            'curriculo_nome' => $doc->arquivo_nome,
+            'curriculo_url'  => Storage::disk('public')->url($doc->arquivo_path),
+        ]);
     }
 }

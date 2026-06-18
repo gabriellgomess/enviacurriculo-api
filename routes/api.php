@@ -536,9 +536,10 @@ Route::middleware('auth:sanctum')->group(function () {
     */
     Route::middleware('role:candidato')->prefix('candidato')->group(function () {
         // Perfil do próprio candidato
-        Route::get('perfil',       [CandidatoPerfilController::class, 'show']);
-        Route::put('perfil',       [CandidatoPerfilController::class, 'update']);
-        Route::post('perfil/foto', [CandidatoPerfilController::class, 'uploadFoto']);
+        Route::get('perfil',            [CandidatoPerfilController::class, 'show']);
+        Route::put('perfil',            [CandidatoPerfilController::class, 'update']);
+        Route::post('perfil/foto',      [CandidatoPerfilController::class, 'uploadFoto']);
+        Route::post('perfil/curriculo', [CandidatoPerfilController::class, 'uploadCurriculo']);
 
         // Currículos do candidato (CRUD + ativar)
         Route::get('curriculos',             [CandidatoCurriculoController::class, 'index']);
