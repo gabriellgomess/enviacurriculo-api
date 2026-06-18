@@ -18,6 +18,7 @@ class Vaga extends Model
         'empresa_id',
         'franquia_id',
         'nivel_vaga_id',
+        'taxa_servico',
         'tipo_contrato',
         'regime_trabalho',
         'carga_horaria',
