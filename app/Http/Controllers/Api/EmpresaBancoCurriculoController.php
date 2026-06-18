@@ -76,8 +76,13 @@ class EmpresaBancoCurriculoController extends Controller
             'status'                   => 'nullable|in:ativo,inativo',
             'origem'                   => 'nullable|in:manual,copia_base',
             'arquivo'                  => 'nullable|file|max:10240|mimes:pdf,doc,docx',
+            'arquivo_cnh'              => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'arquivo_ctps'             => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'arquivos_diploma'         => 'nullable|array',
+            'arquivos_diploma.*'       => 'file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
+        $dir   = "empresas/{$empresaId}/banco-curriculos";
         $extra = [
             'empresa_id' => $empresaId,
             'origem'     => $data['origem'] ?? 'manual',
@@ -86,12 +91,26 @@ class EmpresaBancoCurriculoController extends Controller
 
         if ($request->hasFile('arquivo')) {
             $arquivo = $request->file('arquivo');
-            $extra['arquivo_path'] = $arquivo->store("empresas/{$empresaId}/banco-curriculos", 'public');
+            $extra['arquivo_path'] = $arquivo->store($dir, 'public');
             $extra['arquivo_nome'] = $arquivo->getClientOriginalName();
         }
 
+        foreach (['arquivo_cnh' => 'cnh', 'arquivo_ctps' => 'ctps'] as $campo => $slug) {
+            if ($request->hasFile($campo)) {
+                $f = $request->file($campo);
+                $extra["arquivo_{$slug}_path"] = $f->store($dir, 'public');
+                $extra["arquivo_{$slug}_nome"] = $f->getClientOriginalName();
+            }
+        }
+
+        if ($request->hasFile('arquivos_diploma')) {
+            $extra['diplomas'] = collect($request->file('arquivos_diploma'))
+                ->map(fn($f) => ['path' => $f->store($dir, 'public'), 'nome' => $f->getClientOriginalName()])
+                ->all();
+        }
+
         $curriculo = EmpresaCurriculo::create([
-            ...collect($data)->except(['arquivo', 'origem', 'status'])->all(),
+            ...collect($data)->except(['arquivo', 'arquivo_cnh', 'arquivo_ctps', 'arquivos_diploma', 'origem', 'status'])->all(),
             ...$extra,
         ]);
 
@@ -170,8 +189,16 @@ class EmpresaBancoCurriculoController extends Controller
 
         $curriculo = EmpresaCurriculo::where('empresa_id', $empresaId)->findOrFail($id);
 
-        if ($curriculo->arquivo_path && $curriculo->origem === 'manual') {
-            Storage::disk('public')->delete($curriculo->arquivo_path);
+        if ($curriculo->origem === 'manual') {
+            $paths = array_filter([
+                $curriculo->arquivo_path,
+                $curriculo->arquivo_cnh_path,
+                $curriculo->arquivo_ctps_path,
+                ...collect($curriculo->diplomas ?? [])->pluck('path')->all(),
+            ]);
+            if ($paths) {
+                Storage::disk('public')->delete($paths);
+            }
         }
 
         $curriculo->delete();
@@ -295,6 +322,14 @@ class EmpresaBancoCurriculoController extends Controller
             'status'                   => $c->active ? 'ativo' : 'inativo',
             'origem'                   => $c->origem,
             'arquivo_nome'             => $c->arquivo_nome,
+            'arquivo_cnh_nome'         => $c->arquivo_cnh_nome,
+            'arquivo_cnh_url'          => $c->arquivo_cnh_path ? Storage::disk('public')->url($c->arquivo_cnh_path) : null,
+            'arquivo_ctps_nome'        => $c->arquivo_ctps_nome,
+            'arquivo_ctps_url'         => $c->arquivo_ctps_path ? Storage::disk('public')->url($c->arquivo_ctps_path) : null,
+            'diplomas'                 => collect($c->diplomas ?? [])->map(fn($d) => [
+                'nome' => $d['nome'] ?? null,
+                'url'  => isset($d['path']) ? Storage::disk('public')->url($d['path']) : null,
+            ])->all(),
             'created_at'               => $c->created_at,
         ];
     }

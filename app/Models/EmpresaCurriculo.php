@@ -13,12 +13,15 @@ class EmpresaCurriculo extends Model
         'cidade', 'estado', 'bairro', 'cargos_interesse',
         'experiencia_profissional', 'educacao', 'habilidades',
         'origem', 'arquivo_path', 'arquivo_nome',
+        'arquivo_cnh_path', 'arquivo_cnh_nome',
+        'arquivo_ctps_path', 'arquivo_ctps_nome', 'diplomas',
         'cep', 'rua', 'numero', 'complemento', 'tipo_cnh',
         'informacoes_pessoais', 'idiomas', 'informacoes_adicionais', 'active',
     ];
 
     protected $casts = [
         'cargos_interesse' => 'array',
+        'diplomas'         => 'array',
         'active'           => 'boolean',
     ];
 
