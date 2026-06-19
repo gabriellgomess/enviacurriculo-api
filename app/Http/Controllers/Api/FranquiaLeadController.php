@@ -4,11 +4,25 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\DiscConvite;
+use App\Models\Franquia;
 use App\Models\FranquiaLead;
 use Illuminate\Http\Request;
 
 class FranquiaLeadController extends Controller
 {
+    /**
+     * GET /franquias-publicas — público (lista de franqueados para o campo
+     * "Veio por indicação?" do formulário Seja Franqueado).
+     */
+    public function publicas()
+    {
+        $franquias = Franquia::where('active', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'cidade', 'estado']);
+
+        return response()->json(['data' => $franquias]);
+    }
+
     /**
      * POST /franquia-leads — público (formulário "Seja Franqueado" no home).
      */

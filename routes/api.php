@@ -89,6 +89,7 @@ Route::post('empresas/cadastrar', \App\Http\Controllers\Api\RegisterEmpresaContr
 Route::get('cnpj/{cnpj}', [CnpjController::class, 'show'])->middleware('throttle:30,1');
 
 // Lead público "Seja Franqueado" (home)
+Route::get('franquias-publicas', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'publicas']);
 Route::post('franquia-leads', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'store'])
     ->middleware('throttle:10,1');
 
