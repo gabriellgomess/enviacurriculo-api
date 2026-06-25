@@ -31,6 +31,7 @@ class Vaga extends Model
         'bairro',
         'quantidade_vagas',
         'status',
+        'requer_validacao_premium',
         'data_abertura',
         'data_fechamento',
         'canal',
@@ -52,6 +53,7 @@ class Vaga extends Model
         'data_fechamento' => 'date',
         'ocultar_empresa' => 'boolean',
         'ocultar_endereco'=> 'boolean',
+        'requer_validacao_premium' => 'boolean',
     ];
 
     protected $appends = ['modalidade', 'salario_oculto'];

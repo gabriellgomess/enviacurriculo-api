@@ -124,6 +124,7 @@ class FranquiaVagaController extends Controller
             'expira_em'        => 'nullable|date',
             'nivel_vaga_id'    => 'nullable|integer|exists:niveis_vagas,id',
             'taxa_servico'     => 'nullable|numeric|min:0|max:100',
+            'requer_validacao_premium' => 'nullable|boolean',
         ]);
 
         // Valida que a empresa pertence a esta franquia
@@ -151,6 +152,7 @@ class FranquiaVagaController extends Controller
             'data_fechamento' => $validated['expira_em'] ?? null,
             'nivel_vaga_id'   => $validated['nivel_vaga_id'] ?? null,
             'taxa_servico'    => $validated['taxa_servico'] ?? null,
+            'requer_validacao_premium' => $request->boolean('requer_validacao_premium'),
             'status'          => 'publicada',
             'data_abertura'   => now(),
         ]);
@@ -248,6 +250,7 @@ class FranquiaVagaController extends Controller
             'vagas_disponiveis' => 'nullable|integer|min:1',
             'expira_em'         => 'nullable|date',
             'taxa_servico'      => 'nullable|numeric|min:0|max:100',
+            'requer_validacao_premium' => 'nullable|boolean',
         ]);
 
         $data = [];

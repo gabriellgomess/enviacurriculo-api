@@ -87,6 +87,7 @@ class VagaController extends Controller
             'bairro'          => 'nullable|string|max:100',
             'quantidade_vagas'=> 'nullable|integer|min:1',
             'status'          => 'nullable|in:rascunho,publicada,pausada,fechada',
+            'requer_validacao_premium' => 'nullable|boolean',
             'data_abertura'   => 'nullable|date',
             'data_fechamento' => 'nullable|date|after_or_equal:data_abertura',
         ]);
@@ -131,6 +132,7 @@ class VagaController extends Controller
             'bairro'          => 'nullable|string|max:100',
             'quantidade_vagas'=> 'nullable|integer|min:1',
             'status'          => 'nullable|in:rascunho,publicada,pausada,fechada',
+            'requer_validacao_premium' => 'nullable|boolean',
             'data_abertura'   => 'nullable|date',
             'data_fechamento' => 'nullable|date|after_or_equal:data_abertura',
         ]);

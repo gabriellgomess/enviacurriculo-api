@@ -7,7 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Candidato;
 use App\Models\CandidatoDocumento;
 use App\Models\CandidatoParecer;
+use App\Models\Empresa;
 use App\Models\Envio;
+use App\Models\EnvioParecer;
 use App\Models\User;
 use App\Models\Vaga;
 use Illuminate\Http\Request;
@@ -22,6 +24,64 @@ class FranquiaCandidatoController extends Controller
     private function vagaIds(int $franquiaId): \Illuminate\Support\Collection
     {
         return Vaga::where('franquia_id', $franquiaId)->pluck('id');
+    }
+
+    // GET /franquia/pareceres
+    // Todos os pareceres (empresa) das vagas das empresas sob esta franquia —
+    // pendentes de validacao e ja enviados/decididos.
+    public function pareceresEmpresas(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresaIds = Empresa::where('franquia_id', $franquiaId)->pluck('id');
+
+        $query = EnvioParecer::whereHas('envio.vaga', fn($q) => $q->whereIn('empresa_id', $empresaIds))
+            ->with([
+                'envio.vaga:id,titulo,empresa_id',
+                'envio.vaga.empresa:id,razao_social,nome_fantasia',
+                'envio.candidato.user:id,name',
+            ])
+            ->orderByDesc('created_at');
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $pareceres = $query->get()->map(fn($p) => [
+            'id'         => $p->id,
+            'texto'      => $p->texto,
+            'autor'      => $p->autor,
+            'status'     => $p->status,
+            'motivo_validacao' => $p->motivo_validacao,
+            'candidato'  => $p->envio?->candidato?->user?->name,
+            'vaga'       => $p->envio?->vaga?->titulo,
+            'empresa'    => $p->envio?->vaga?->empresa?->razao_social
+                            ?? $p->envio?->vaga?->empresa?->nome_fantasia,
+            'created_at' => $p->created_at,
+        ]);
+
+        return response()->json(['data' => $pareceres]);
+    }
+
+    // PATCH /franquia/pareceres/{id}/validar
+    public function validarParecer(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresaIds = Empresa::where('franquia_id', $franquiaId)->pluck('id');
+
+        $data = $request->validate([
+            'acao'   => 'required|in:validado,rejeitado',
+            'motivo' => 'nullable|string|max:1000',
+        ]);
+
+        $parecer = EnvioParecer::whereHas('envio.vaga', fn($q) => $q->whereIn('empresa_id', $empresaIds))
+            ->findOrFail($id);
+
+        $parecer->update([
+            'status'           => $data['acao'],
+            'motivo_validacao' => $data['motivo'] ?? null,
+        ]);
+
+        return response()->json(['message' => 'Parecer ' . $data['acao'] . '.', 'data' => ['id' => $parecer->id, 'status' => $parecer->status]]);
     }
 
     /**

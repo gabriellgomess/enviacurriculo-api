@@ -129,7 +129,7 @@ class EmpresaCandidatoRecebidoController extends Controller
             'arquivo' => 'nullable|file|max:5120|mimes:pdf',
         ]);
 
-        $envio = $this->baseQuery($empresaId)->findOrFail($id);
+        $envio = $this->baseQuery($empresaId)->with('vaga:id,requer_validacao_premium')->findOrFail($id);
 
         $arquivoPath = null;
         $arquivoNome = null;
@@ -138,6 +138,10 @@ class EmpresaCandidatoRecebidoController extends Controller
             $arquivoNome = $request->file('arquivo')->getClientOriginalName();
         }
 
+        // Se a vaga exige validacao da franquia premium, o parecer fica pendente;
+        // caso contrario e enviado direto.
+        $status = $envio->vaga?->requer_validacao_premium ? 'pendente_validacao' : 'enviado';
+
         $parecer = EnvioParecer::create([
             'envio_id'     => $envio->id,
             'texto'        => $data['texto'],
@@ -145,12 +149,14 @@ class EmpresaCandidatoRecebidoController extends Controller
             'arquivo_path' => $arquivoPath,
             'arquivo_nome' => $arquivoNome,
             'created_by'   => $request->user()->id,
+            'status'       => $status,
         ]);
 
         return response()->json(['data' => [
             'id'         => $parecer->id,
             'texto'      => $parecer->texto,
             'autor'      => $parecer->autor,
+            'status'     => $parecer->status,
             'created_at' => $parecer->created_at,
         ]], 201);
     }

@@ -429,6 +429,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('candidatos/pareceres',               [FranquiaCandidatoController::class, 'pareceres']);
         Route::put('candidatos/parecer/{id}',            [FranquiaCandidatoController::class, 'updateParecer']);
         Route::delete('candidatos/parecer/{id}',         [FranquiaCandidatoController::class, 'destroyParecer']);
+        // Pareceres das empresas da franquia (fluxo de validacao premium)
+        Route::get('pareceres',                          [FranquiaCandidatoController::class, 'pareceresEmpresas']);
+        Route::patch('pareceres/{id}/validar',           [FranquiaCandidatoController::class, 'validarParecer']);
         Route::get('candidatos',                         [FranquiaCandidatoController::class, 'index']);
         Route::post('candidatos',                        [FranquiaCandidatoController::class, 'store']);
         Route::get('candidatos/{id}',                    [FranquiaCandidatoController::class, 'show']);
