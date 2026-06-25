@@ -235,6 +235,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('leads/{lead}',  [\App\Http\Controllers\Api\FranquiaLeadController::class, 'update']);
         Route::delete('leads/{lead}', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'destroy']);
         Route::post('leads/{lead}/disc-convite', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'gerarDiscConvite']);
+        Route::post('leads/{lead}/converter',    [\App\Http\Controllers\Api\FranquiaLeadController::class, 'converter']);
 
         // Gestão de franquias — metas, onboarding, vínculos e acessos
         Route::prefix('gestao')->group(function () {

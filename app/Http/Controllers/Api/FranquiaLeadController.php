@@ -7,6 +7,7 @@ use App\Models\DiscConvite;
 use App\Models\Franquia;
 use App\Models\FranquiaLead;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class FranquiaLeadController extends Controller
 {
@@ -46,6 +47,40 @@ class FranquiaLeadController extends Controller
         FranquiaLead::create($data);
 
         return response()->json(['message' => 'Recebemos seu interesse! Em breve entraremos em contato.'], 201);
+    }
+
+    /**
+     * POST /admin/leads/{lead}/converter — cria uma franquia a partir do lead.
+     * A franquia entra com dados basicos (tipo start) e o admin completa depois
+     * (incluindo o acesso/login).
+     */
+    public function converter(FranquiaLead $lead)
+    {
+        if ($lead->status === 'convertido') {
+            return response()->json(['message' => 'Este lead já foi convertido.'], 422);
+        }
+
+        $franquia = DB::transaction(function () use ($lead) {
+            $franquia = Franquia::create([
+                'tipo'     => 'start',
+                'nome'     => $lead->nome_completo,
+                'email'    => $lead->email,
+                'telefone' => $lead->telefone,
+                'bairro'   => $lead->bairro,
+                'cidade'   => $lead->cidade,
+                'estado'   => $lead->estado,
+            ]);
+            $franquia->update(['codigo' => 'FR-' . str_pad($franquia->id, 4, '0', STR_PAD_LEFT)]);
+
+            $lead->update(['status' => 'convertido']);
+
+            return $franquia;
+        });
+
+        return response()->json([
+            'message' => 'Lead convertido em franquia com sucesso.',
+            'data'    => ['franquia_id' => $franquia->id, 'codigo' => $franquia->codigo],
+        ], 201);
     }
 
     /**
