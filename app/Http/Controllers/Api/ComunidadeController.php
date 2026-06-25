@@ -90,7 +90,7 @@ class ComunidadeController extends Controller
     {
         $validated = $request->validate([
             'conteudo'   => 'required|string|max:5000',
-            'imagem_url' => 'nullable|url|max:500',
+            'imagem_url' => 'nullable|string', // aceita base64 (data URI) ou URL de CDN
         ]);
 
         $post = ComunidadePost::create([

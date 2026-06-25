@@ -92,7 +92,7 @@ class FranquiaComunidadeController extends Controller
             'titulo'    => 'nullable|string|max:255',
             'conteudo'  => 'required|string|max:5000',
             'tipo'      => 'nullable|in:duvida,compartilhamento,aviso',
-            'imagem_url'=> 'nullable|url|max:500',
+            'imagem_url'=> 'nullable|string', // aceita base64 (data URI) ou URL de CDN
         ]);
 
         $post = ComunidadePost::create([
