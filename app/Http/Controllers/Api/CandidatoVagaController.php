@@ -52,7 +52,7 @@ class CandidatoVagaController extends Controller
 
         $items = collect($vagas->items())->map(function ($v) use ($aplicadas) {
             $v->ja_aplicou = in_array($v->id, $aplicadas);
-            return $v;
+            return $this->ocultarEmpresaSeAgencia($v);
         });
 
         return response()->json([
@@ -73,7 +73,22 @@ class CandidatoVagaController extends Controller
             ->where('vaga_id', $vaga->id)
             ->exists();
 
-        return response()->json(['data' => $vaga]);
+        return response()->json(['data' => $this->ocultarEmpresaSeAgencia($vaga)]);
+    }
+
+    /**
+     * Em vagas de agência (ou com ocultar_empresa) o candidato não pode ver o
+     * nome/identificação da empresa contratante.
+     */
+    private function ocultarEmpresaSeAgencia(Vaga $v): Vaga
+    {
+        if (($v->canal === 'agencia' || $v->ocultar_empresa) && $v->empresa) {
+            $v->empresa->razao_social  = null;
+            $v->empresa->nome_fantasia = null;
+            $v->empresa->logo_url      = null;
+            $v->setAttribute('empresa_oculta', true);
+        }
+        return $v;
     }
 
     // POST /candidato/vagas/{id}/aplicar
