@@ -32,7 +32,8 @@ class FranquiaCandidatoController extends Controller
     {
         return Candidato::where(function ($q) use ($franquiaId, $vagaIds) {
             $q->whereHas('envios', fn($s) => $s->whereIn('vaga_id', $vagaIds))
-              ->orWhere('franquia_id', $franquiaId);
+              ->orWhere('franquia_id', $franquiaId)
+              ->orWhereNull('franquia_id'); // candidatos do banco global (admin) visíveis a todas as franquias
         });
     }
 

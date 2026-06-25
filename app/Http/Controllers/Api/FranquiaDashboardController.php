@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Candidato;
 use App\Models\Empresa;
 use App\Models\Franquia;
+use App\Models\MetaFranquia;
 use App\Models\Vaga;
 use Illuminate\Http\Request;
 
@@ -79,7 +80,8 @@ class FranquiaDashboardController extends Controller
                     'tipo'   => $franquia->tipo,
                 ],
                 'kpis' => [
-                    'metas_ativas'        => 0, // tabela metas ainda não existe
+                    'metas_ativas'        => MetaFranquia::where('franquia_id', $franquiaId)
+                                                ->where('status', 'ativa')->count(),
                     'chamados_abertos'    => 0, // tabela chamados ainda não existe
                     'total_recebido'      => 0, // financeiro pendente
                     'total_a_receber'     => 0, // financeiro pendente

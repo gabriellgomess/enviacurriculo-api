@@ -141,14 +141,19 @@ class FranquiaComunidadeController extends Controller
     {
         $post = ComunidadePost::findOrFail($id);
 
+        // o frontend envia "conteudo"; aceita "texto" como fallback (compatibilidade)
+        if (!$request->filled('conteudo') && $request->filled('texto')) {
+            $request->merge(['conteudo' => $request->input('texto')]);
+        }
+
         $validated = $request->validate([
-            'texto' => 'required|string|max:2000',
+            'conteudo' => 'required|string|max:2000',
         ]);
 
         $comentario = ComunidadeComentario::create([
             'post_id'  => $post->id,
             'user_id'  => $request->user()->id,
-            'conteudo' => $validated['texto'],
+            'conteudo' => $validated['conteudo'],
         ]);
 
         $comentario->load('user:id,name');
