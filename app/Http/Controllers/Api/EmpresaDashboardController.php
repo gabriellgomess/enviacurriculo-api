@@ -9,6 +9,7 @@ use App\Models\EmpresaColaborador;
 use App\Models\EmpresaCurriculo;
 use App\Models\EmpresaEntrevista;
 use App\Models\Envio;
+use App\Models\TesteAgendado;
 use App\Models\Vaga;
 use Illuminate\Http\Request;
 
@@ -46,14 +47,7 @@ class EmpresaDashboardController extends Controller
                     'plataforma' => (int) $recebidos->plataforma,
                     'empresa'    => (int) $recebidos->empresa,
                 ],
-                'conversao' => [
-                    'recebidos'      => $totalEnvios,
-                    'entrevistados'  => 0,
-                    'teste_pratico'  => 0,
-                    'aprovados'      => 0,
-                    'reprovados'     => 0,
-                    'desistentes'    => 0,
-                ],
+                'conversao' => $this->funilConversao($empresaId, $vagaIds, $totalEnvios),
                 'vagas_ativas'        => Vaga::where('empresa_id', $empresaId)
                                             ->where('status', 'publicada')
                                             ->count(),
@@ -81,14 +75,28 @@ class EmpresaDashboardController extends Controller
         $total = Envio::whereIn('vaga_id', $vagaIds)->count();
 
         return response()->json([
-            'data' => [
-                'recebidos'     => $total,
-                'entrevistados' => 0,
-                'teste_pratico' => 0,
-                'aprovados'     => 0,
-                'reprovados'    => 0,
-                'desistentes'   => 0,
-            ],
+            'data' => $this->funilConversao($empresaId, $vagaIds, $total),
         ]);
+    }
+
+    /**
+     * Funil de conversao da empresa, a partir de envios (status_empresa),
+     * entrevistas e testes praticos agendados.
+     */
+    private function funilConversao(int $empresaId, \Illuminate\Support\Collection $vagaIds, int $recebidos): array
+    {
+        $porStatus = Envio::whereIn('vaga_id', $vagaIds)
+            ->selectRaw('status_empresa, COUNT(*) as total')
+            ->groupBy('status_empresa')
+            ->pluck('total', 'status_empresa');
+
+        return [
+            'recebidos'     => $recebidos,
+            'entrevistados' => EmpresaEntrevista::where('empresa_id', $empresaId)->distinct('candidato_id')->count('candidato_id'),
+            'teste_pratico' => TesteAgendado::where('empresa_id', $empresaId)->distinct('candidato_id')->count('candidato_id'),
+            'aprovados'     => (int) ($porStatus['aprovado'] ?? 0),
+            'reprovados'    => (int) ($porStatus['reprovado'] ?? 0),
+            'desistentes'   => (int) ($porStatus['desistiu'] ?? 0),
+        ];
     }
 }
