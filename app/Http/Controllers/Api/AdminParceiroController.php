@@ -10,6 +10,7 @@ use App\Models\UserRole;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class AdminParceiroController extends Controller
 {
@@ -52,7 +53,7 @@ class AdminParceiroController extends Controller
             'razao_social'   => 'nullable|string|max:255',
             'cnpj'           => 'nullable|string|max:18|unique:parceiros,cnpj',
             'franquia_id'    => 'nullable|integer|exists:franquias,id',
-            'email'          => 'nullable|email|max:255',
+            'email'          => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')],
             'telefone'       => 'nullable|string|max:20',
             'descricao'      => 'nullable|string',
             'cep'            => 'nullable|string|max:9',
@@ -118,7 +119,7 @@ class AdminParceiroController extends Controller
             'razao_social'   => 'nullable|string|max:255',
             'cnpj'           => 'nullable|string|max:18|unique:parceiros,cnpj,' . $parceiro->id,
             'franquia_id'    => 'nullable|integer|exists:franquias,id',
-            'email'          => 'nullable|email|max:255',
+            'email'          => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($parceiro->user_id)],
             'telefone'       => 'nullable|string|max:20',
             'descricao'      => 'nullable|string',
             'cep'            => 'nullable|string|max:9',

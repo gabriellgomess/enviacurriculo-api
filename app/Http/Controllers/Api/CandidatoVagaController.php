@@ -42,7 +42,8 @@ class CandidatoVagaController extends Controller
         if ($request->filled('regime_trabalho')) $query->where('regime_trabalho', $request->regime_trabalho);
         if ($request->filled('tipo_contrato'))   $query->where('tipo_contrato', $request->tipo_contrato);
 
-        $vagas = $query->orderByDesc('data_abertura')->paginate(20);
+        $perPage = min((int) $request->input('per_page', 20), 200);
+        $vagas = $query->orderByDesc('data_abertura')->paginate($perPage);
 
         // Marca ja_aplicou
         $aplicadas = Envio::where('candidato_id', $c->id)

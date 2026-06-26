@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdminChamadoController;
 use App\Http\Controllers\Api\AdminFinanceiroController;
 use App\Http\Controllers\Api\CnpjController;
 use App\Http\Controllers\Api\AdminGestaoFranquiasController;
@@ -192,6 +193,13 @@ Route::middleware('auth:sanctum')->group(function () {
         // Parceiros
         Route::apiResource('parceiros', AdminParceiroController::class);
         Route::patch('parceiros/{parceiro}/toggle-active', [AdminParceiroController::class, 'toggleActive']);
+
+        // Chamados (suporte das franquias)
+        Route::get('chamados',                         [AdminChamadoController::class, 'index']);
+        Route::get('chamados/{id}',                    [AdminChamadoController::class, 'show']);
+        Route::post('chamados/{id}/mensagens',         [AdminChamadoController::class, 'storeMensagem']);
+        Route::patch('chamados/{id}/fechar',           [AdminChamadoController::class, 'fechar']);
+        Route::patch('chamados/{id}/reabrir',          [AdminChamadoController::class, 'reabrir']);
 
         // Currículos (Candidatos)
         Route::apiResource('candidatos', CandidatoController::class);

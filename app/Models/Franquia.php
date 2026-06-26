@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 class Franquia extends Model
 {
@@ -86,6 +88,16 @@ class Franquia extends Model
     public function documentos()
     {
         return $this->hasMany(FranquiaDocumento::class);
+    }
+
+    // Retorna sempre a URL completa, independente de como foi gravado
+    protected function logoUrl(): Attribute
+    {
+        return Attribute::make(
+            get: fn($value) => $value
+                ? (str_starts_with($value, 'http') ? $value : Storage::disk('public')->url($value))
+                : null,
+        );
     }
 
     public function createdBy()

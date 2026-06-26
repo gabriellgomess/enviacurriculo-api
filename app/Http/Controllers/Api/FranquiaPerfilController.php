@@ -101,16 +101,20 @@ class FranquiaPerfilController extends Controller
         $request->validate(['logo' => 'required|image|max:2048']);
         $franquia = Franquia::findOrFail($this->tokenContextId($request));
 
+        // Remove logo anterior (suporta caminho relativo ou URL legada absoluta)
         if ($franquia->logo_url) {
-            $base = Storage::disk('public')->url('');
-            $oldPath = str_replace($base, '', $franquia->logo_url);
-            Storage::disk('public')->delete($oldPath);
+            $old = $franquia->logo_url;
+            if (str_starts_with($old, 'http')) {
+                $old = ltrim(parse_url($old, PHP_URL_PATH), '/');
+                $old = preg_replace('#^storage/#', '', $old);
+            }
+            Storage::disk('public')->delete($old);
         }
 
+        // Grava caminho relativo — URL computada no serve time
         $path = $request->file('logo')->store('franquias/logos', 'public');
-        $url  = Storage::disk('public')->url($path);
-        $franquia->update(['logo_url' => $url]);
+        $franquia->update(['logo_url' => $path]);
 
-        return response()->json(['logo_url' => $url]);
+        return response()->json(['logo_url' => Storage::disk('public')->url($path)]);
     }
 }

@@ -74,7 +74,8 @@ class Empresa extends Model
 
     public function beneficios()
     {
-        return $this->belongsToMany(BeneficioCatalogo::class, 'empresa_beneficios', 'empresa_id', 'beneficio_id');
+        return $this->belongsToMany(BeneficioCatalogo::class, 'empresa_beneficios', 'empresa_id', 'beneficio_id')
+                    ->withTimestamps();
     }
 
     public function vagas()

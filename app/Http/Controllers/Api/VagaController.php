@@ -106,7 +106,12 @@ class VagaController extends Controller
     public function show(Vaga $vaga)
     {
         return response()->json(
-            $vaga->load(['empresa:id,codigo,razao_social,nome_fantasia', 'franquia:id,codigo,nome', 'nivelVaga:id,nome'])
+            $vaga->load([
+                'empresa:id,codigo,razao_social,nome_fantasia',
+                'franquia:id,codigo,nome',
+                'nivelVaga:id,nome',
+                'franquiasCompartilhadas:id,nome',
+            ])
         );
     }
 

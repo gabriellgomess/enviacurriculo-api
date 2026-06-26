@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class EmpresaController extends Controller
 {
@@ -66,7 +67,7 @@ class EmpresaController extends Controller
             'razao_social'          => 'required|string|max:255',
             'nome_fantasia'         => 'nullable|string|max:255',
             'cnpj'                  => 'nullable|string|max:18|unique:empresas,cnpj',
-            'email'                 => 'nullable|email|max:255',
+            'email'                 => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')],
             'telefone'              => 'nullable|string|max:20',
             'tipo_empresa'          => 'required|in:matriz,filial',
             'tipo_acesso'           => 'nullable|in:plataforma,agencia,ambos',
@@ -146,7 +147,7 @@ class EmpresaController extends Controller
             'razao_social'          => 'required|string|max:255',
             'nome_fantasia'         => 'nullable|string|max:255',
             'cnpj'                  => 'nullable|string|max:18|unique:empresas,cnpj,' . $empresa->id,
-            'email'                 => 'nullable|email|max:255',
+            'email'                 => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($empresa->user()?->id)],
             'telefone'              => 'nullable|string|max:20',
             'tipo_empresa'          => 'required|in:matriz,filial',
             'tipo_acesso'           => 'nullable|in:plataforma,agencia,ambos',
