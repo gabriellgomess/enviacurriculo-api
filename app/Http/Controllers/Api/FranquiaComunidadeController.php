@@ -9,6 +9,7 @@ use App\Models\ComunidadeReacao;
 use App\Models\UserContext;
 use App\Models\Franquia;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class FranquiaComunidadeController extends Controller
 {
@@ -19,6 +20,7 @@ class FranquiaComunidadeController extends Controller
 
         $query = ComunidadePost::with('user:id,name')
             ->withCount('comentarios as total_comentarios')
+            ->withCount('reacoes as reacoes_count')
             ->orderByDesc('created_at');
 
         if ($request->filled('tipo')) {
@@ -63,7 +65,7 @@ class FranquiaComunidadeController extends Controller
                     ? ['id' => $franquiaId, 'nome' => $franquia->nome]
                     : ['id' => $post->user_id, 'nome' => $post->user?->name],
                 'total_comentarios'=> $post->total_comentarios,
-                'reacoes_count'    => 0,
+                'reacoes_count'    => $post->reacoes_count,
                 'user_reacted'     => $reagiuEm->has($post->id),
                 'comentarios'      => collect($comentarios[$post->id] ?? [])->map(fn($c) => [
                     'id'         => $c->id,
@@ -164,6 +166,40 @@ class FranquiaComunidadeController extends Controller
             'texto'      => $comentario->conteudo,
             'created_at' => $comentario->created_at,
         ]], 201);
+    }
+
+    // POST /franquia/comunidade/posts/{id}/reagir
+    public function reagir(Request $request, int $id)
+    {
+        $post   = ComunidadePost::findOrFail($id);
+        $userId = $request->user()->id;
+
+        return DB::transaction(function () use ($post, $userId) {
+            $existing = ComunidadeReacao::where('post_id', $post->id)
+                ->where('user_id', $userId)
+                ->first();
+
+            if ($existing) {
+                $existing->delete();
+                $reacted = false;
+            } else {
+                ComunidadeReacao::create([
+                    'post_id' => $post->id,
+                    'user_id' => $userId,
+                    'tipo'    => 'like',
+                ]);
+                $reacted = true;
+            }
+
+            $count = ComunidadeReacao::where('post_id', $post->id)->count();
+
+            return response()->json([
+                'reacted'       => $reacted,
+                'user_reacted'  => $reacted,
+                'count'         => $count,
+                'reacoes_count' => $count,
+            ]);
+        });
     }
 
     // DELETE /franquia/comunidade/posts/{id}

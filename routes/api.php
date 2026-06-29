@@ -474,6 +474,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('posts/{id}',                     [FranquiaComunidadeController::class, 'show']);
             Route::delete('posts/{id}',                  [FranquiaComunidadeController::class, 'destroy']);
             Route::post('posts/{id}/comentarios',        [FranquiaComunidadeController::class, 'comentar']);
+            Route::post('posts/{id}/reagir',             [FranquiaComunidadeController::class, 'reagir']);
         });
 
         // Chamados
