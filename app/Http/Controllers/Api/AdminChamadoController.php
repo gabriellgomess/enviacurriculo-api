@@ -7,6 +7,8 @@ use App\Models\FranquiaChamado;
 use App\Models\FranquiaChamadoMensagem;
 use Illuminate\Http\Request;
 
+
+
 class AdminChamadoController extends Controller
 {
     // GET /api/admin/chamados
