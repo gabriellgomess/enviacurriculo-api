@@ -324,9 +324,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('configuracoes/tipo-niveis-vagas',        [AdminNivelVagaController::class, 'index']);
         Route::post('configuracoes/tipo-niveis-vagas',       [AdminNivelVagaController::class, 'store']);
         Route::delete('configuracoes/tipo-niveis-vagas/{id}', [AdminNivelVagaController::class, 'destroy']);
-        Route::post('configuracoes/backup',                  function() {
-            return response()->json(['message' => 'Backup do banco de dados iniciado com sucesso.']);
-        });
+        Route::get('configuracoes/backup',                   [App\Http\Controllers\Api\AdminBackupController::class, 'index']);
+        Route::post('configuracoes/backup',                  [App\Http\Controllers\Api\AdminBackupController::class, 'store']);
+        Route::post('configuracoes/backup/{id}/restore',     [App\Http\Controllers\Api\AdminBackupController::class, 'restore']);
 
         // Leads "Seja Franqueado"
         Route::get('leads',           [\App\Http\Controllers\Api\FranquiaLeadController::class, 'index']);
