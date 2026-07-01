@@ -136,6 +136,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('auth/contextos/{role}', [AuthController::class, 'listContextos']);
     Route::post('auth/impersonate', [AuthController::class, 'impersonate']);
 
+    // Agenda (pessoal e compartilhada)
+    Route::get('agenda/tarefas',                [App\Http\Controllers\Api\AgendaController::class, 'index']);
+    Route::post('agenda/tarefas',               [App\Http\Controllers\Api\AgendaController::class, 'store']);
+    Route::patch('agenda/tarefas/{id}/toggle',  [App\Http\Controllers\Api\AgendaController::class, 'toggle']);
+    Route::delete('agenda/tarefas/{id}',        [App\Http\Controllers\Api\AgendaController::class, 'destroy']);
+    Route::get('agenda/aniversarios',           [App\Http\Controllers\Api\AgendaController::class, 'aniversarios']);
+
     /*
     |--------------------------------------------------------------------------
     | Comunidade (compartilhada — qualquer autenticado: admin, franquia, etc)
