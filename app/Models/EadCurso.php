@@ -11,4 +11,5 @@ class EadCurso extends Model
     protected $casts    = ['active' => 'boolean'];
 
     public function aulas() { return $this->hasMany(EadAula::class, 'curso_id'); }
+    public function provas() { return $this->hasMany(EadProva::class, 'curso_id'); }
 }

@@ -5,14 +5,20 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\EadCurso;
 use App\Models\EadAula;
+use App\Models\EadProva;
+use App\Models\EadProvaQuestao;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AdminEadController extends Controller
 {
     // GET /api/admin/ead/cursos
     public function indexCursos()
     {
-        $cursos = EadCurso::withCount('aulas')->orderBy('titulo')->get();
+        $cursos = EadCurso::with(['aulas' => function ($q) {
+            $q->orderBy('ordem');
+        }, 'provas.questoes'])->orderBy('titulo')->get();
+        
         return response()->json(['data' => $cursos]);
     }
 
@@ -50,6 +56,10 @@ class AdminEadController extends Controller
     {
         $curso = EadCurso::findOrFail($id);
         $curso->aulas()->delete();
+        $curso->provas()->each(function ($p) {
+            $p->questoes()->delete();
+            $p->delete();
+        });
         $curso->delete();
 
         return response()->json(['message' => 'Curso excluído com sucesso.']);
@@ -140,5 +150,59 @@ class AdminEadController extends Controller
         $aula->delete();
 
         return response()->json(['message' => 'Aula excluída com sucesso.']);
+    }
+
+    // POST /api/admin/ead/cursos/{cursoId}/provas
+    public function storeProva(Request $request, int $cursoId)
+    {
+        $curso = EadCurso::findOrFail($cursoId);
+
+        $validated = $request->validate([
+            'titulo'                    => 'required|string|max:255',
+            'nota_minima'               => 'required|integer|min:1|max:100',
+            'questoes'                  => 'required|array|min:1',
+            'questoes.*.pergunta'        => 'required|string',
+            'questoes.*.opcao_a'        => 'required|string',
+            'questoes.*.opcao_b'        => 'required|string',
+            'questoes.*.opcao_c'        => 'required|string',
+            'questoes.*.opcao_d'        => 'required|string',
+            'questoes.*.resposta_correta' => 'required|string|in:a,b,c,d',
+        ]);
+
+        return DB::transaction(function () use ($validated, $curso) {
+            $prova = EadProva::create([
+                'curso_id'    => $curso->id,
+                'titulo'      => $validated['titulo'],
+                'nota_minima' => $validated['nota_minima'],
+            ]);
+
+            foreach ($validated['questoes'] as $index => $q) {
+                EadProvaQuestao::create([
+                    'prova_id'         => $prova->id,
+                    'pergunta'         => $q['pergunta'],
+                    'opcao_a'          => $q['opcao_a'],
+                    'opcao_b'          => $q['opcao_b'],
+                    'opcao_c'          => $q['opcao_c'],
+                    'opcao_d'          => $q['opcao_d'],
+                    'resposta_correta' => $q['resposta_correta'],
+                    'ordem'            => $index,
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Prova criada com sucesso.',
+                'data'    => $prova->load('questoes')
+            ], 201);
+        });
+    }
+
+    // DELETE /api/admin/ead/provas/{id}
+    public function destroyProva(int $id)
+    {
+        $prova = EadProva::findOrFail($id);
+        $prova->questoes()->delete();
+        $prova->delete();
+
+        return response()->json(['message' => 'Prova excluída com sucesso.']);
     }
 }

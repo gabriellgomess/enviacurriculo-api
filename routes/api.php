@@ -283,6 +283,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('ead/cursos/{id}/aulas', [AdminEadController::class, 'storeAula']);
         Route::put('ead/aulas/{id}',         [AdminEadController::class, 'updateAula']);
         Route::delete('ead/aulas/{id}',      [AdminEadController::class, 'destroyAula']);
+        Route::post('ead/cursos/{cursoId}/provas', [AdminEadController::class, 'storeProva']);
+        Route::delete('ead/provas/{id}',           [AdminEadController::class, 'destroyProva']);
 
         // Pareceres
         Route::get('pareceres',              [AdminParecerController::class, 'index']);
