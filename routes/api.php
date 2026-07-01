@@ -201,11 +201,23 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('vagas/{vaga}/status', [VagaController::class, 'changeStatus']);
         Route::post('vagas/{vaga}/convidar', [VagaController::class, 'convidarFranquias']);
 
-        // Parceiros
+        // Parceiros - Categorias e Relatórios
+        Route::get('parceiros/categorias',         [AdminParceiroCategoriaController::class, 'index']);
+        Route::post('parceiros/categorias',        [AdminParceiroCategoriaController::class, 'store']);
+        Route::delete('parceiros/categorias/{id}', [AdminParceiroCategoriaController::class, 'destroy']);
+        Route::get('parceiros/relatorios',         [AdminParceiroController::class, 'relatorios']);
+
+        // Parceiros Resource
         Route::apiResource('parceiros', AdminParceiroController::class);
         Route::patch('parceiros/{parceiro}/toggle-active', [AdminParceiroController::class, 'toggleActive']);
 
-        // Chamados (suporte das franquias)
+        // Chamados - Tipos e Relatórios
+        Route::get('chamados/tipos',         [AdminChamadosTiposController::class, 'index']);
+        Route::post('chamados/tipos',        [AdminChamadosTiposController::class, 'store']);
+        Route::delete('chamados/tipos/{id}', [AdminChamadosTiposController::class, 'destroy']);
+        Route::get('chamados/relatorios',    [AdminChamadoController::class, 'relatorios']);
+
+        // Chamados Resource (suporte das franquias)
         Route::get('chamados',                         [AdminChamadoController::class, 'index']);
         Route::get('chamados/{id}',                    [AdminChamadoController::class, 'show']);
         Route::post('chamados/{id}/mensagens',         [AdminChamadoController::class, 'storeMensagem']);
@@ -266,18 +278,6 @@ Route::middleware('auth:sanctum')->group(function () {
         // Teste DISC
         Route::get('disc',                   [AdminDiscController::class, 'index']);
         Route::post('disc',                  [AdminDiscController::class, 'store']);
-
-        // Chamados - Tipos e Relatórios
-        Route::get('chamados/tipos',         [AdminChamadosTiposController::class, 'index']);
-        Route::post('chamados/tipos',        [AdminChamadosTiposController::class, 'store']);
-        Route::delete('chamados/tipos/{id}', [AdminChamadosTiposController::class, 'destroy']);
-        Route::get('chamados/relatorios',    [AdminChamadoController::class, 'relatorios']);
-
-        // Parceiros - Categorias e Relatórios
-        Route::get('parceiros/categorias',         [AdminParceiroCategoriaController::class, 'index']);
-        Route::post('parceiros/categorias',        [AdminParceiroCategoriaController::class, 'store']);
-        Route::delete('parceiros/categorias/{id}', [AdminParceiroCategoriaController::class, 'destroy']);
-        Route::get('parceiros/relatorios',         [AdminParceiroController::class, 'relatorios']);
 
         // Biblioteca (Manuais)
         Route::get('manuais',                      [AdminManualController::class, 'index']);

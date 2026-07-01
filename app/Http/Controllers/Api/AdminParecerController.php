@@ -12,7 +12,8 @@ class AdminParecerController extends Controller
     public function index(Request $request)
     {
         $query = CandidatoParecer::with([
-            'candidato:id,nome_completo',
+            'candidato:id,user_id',
+            'candidato.user:id,name',
             'vaga:id,titulo,empresa_id',
             'vaga.empresa:id,nome_empresa',
             'franquia:id,nome,codigo',
@@ -21,8 +22,8 @@ class AdminParecerController extends Controller
 
         if ($request->filled('busca')) {
             $term = '%' . $request->busca . '%';
-            $query->whereHas('candidato', function ($q) use ($term) {
-                $q->where('nome_completo', 'like', $term);
+            $query->whereHas('candidato.user', function ($q) use ($term) {
+                $q->where('name', 'like', $term);
             })->orWhereHas('franquia', function ($q) use ($term) {
                 $q->where('nome', 'like', $term)->orWhere('codigo', 'like', $term);
             });

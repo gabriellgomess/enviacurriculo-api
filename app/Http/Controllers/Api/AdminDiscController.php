@@ -9,18 +9,18 @@ use Illuminate\Http\Request;
 
 class AdminDiscController extends Controller
 {
-    // GET /api/admin/disc
     public function index(Request $request)
     {
         $query = CandidatoDisc::with([
-            'candidato:id,nome_completo',
+            'candidato:id,user_id',
+            'candidato.user:id,name',
             'aplicador:id,name'
         ])->orderByDesc('created_at');
 
         if ($request->filled('busca')) {
             $term = '%' . $request->busca . '%';
-            $query->whereHas('candidato', function ($q) use ($term) {
-                $q->where('nome_completo', 'like', $term);
+            $query->whereHas('candidato.user', function ($q) use ($term) {
+                $q->where('name', 'like', $term);
             });
         }
 
