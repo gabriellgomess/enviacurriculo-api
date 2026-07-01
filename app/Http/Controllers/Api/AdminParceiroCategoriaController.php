@@ -19,11 +19,15 @@ class AdminParceiroCategoriaController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'nome'      => 'required|string|max:255',
-            'descricao' => 'nullable|string',
+            'nome' => 'required|string|max:255|unique:parceiros_categorias,nome',
         ]);
 
-        $categoria = ParceiroCategoria::create($validated);
+        $nextOrdem = ParceiroCategoria::max('ordem') + 1;
+
+        $categoria = ParceiroCategoria::create([
+            'nome'  => $validated['nome'],
+            'ordem' => $nextOrdem,
+        ]);
 
         return response()->json(['message' => 'Categoria criada com sucesso.', 'data' => $categoria], 201);
     }
