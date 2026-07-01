@@ -13,4 +13,5 @@ class CandidatoParecer extends Model
     public function candidato() { return $this->belongsTo(Candidato::class); }
     public function vaga()      { return $this->belongsTo(Vaga::class); }
     public function criador()   { return $this->belongsTo(User::class, 'criado_por'); }
+    public function franquia()  { return $this->belongsTo(Franquia::class); }
 }

@@ -109,4 +109,43 @@ class AdminChamadoController extends Controller
 
         return response()->json(['message' => 'Chamado reaberto.', 'data' => ['id' => $chamado->id, 'status' => 'em_atendimento']]);
     }
+
+    // GET /api/admin/chamados/relatorios
+    public function relatorios(Request $request)
+    {
+        $query = FranquiaChamado::with('franquia:id,nome,codigo')
+            ->orderByDesc('created_at');
+
+        if ($request->filled('status') && $request->status !== 'todos' && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('data_inicio')) {
+            $query->whereDate('created_at', '>=', $request->data_inicio);
+        }
+
+        if ($request->filled('data_fim')) {
+            $query->whereDate('created_at', '<=', $request->data_fim);
+        }
+
+        $chamados = $query->get();
+
+        $data = $chamados->map(function ($c) {
+            $diffSeconds = strtotime($c->updated_at) - strtotime($c->created_at);
+            $days = max(1, (int) ceil($diffSeconds / (60 * 60 * 24)));
+
+            return [
+                'Número'             => $c->id,
+                'Assunto'            => $c->titulo,
+                'Franquia'           => $c->franquia ? $c->franquia->nome : '-',
+                'Tipo'               => ucfirst($c->categoria),
+                'Status'             => $c->status,
+                'Data Abertura'      => $c->created_at->format('d/MM/Y'),
+                'Última Atualização' => $c->updated_at->format('d/MM/Y'),
+                'Dias'               => (string) $days,
+            ];
+        });
+
+        return response()->json(['data' => $data]);
+    }
 }

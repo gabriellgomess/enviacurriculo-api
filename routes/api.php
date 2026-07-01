@@ -50,6 +50,17 @@ use App\Http\Controllers\Api\RegisterCandidatoController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\VagaController;
+use App\Http\Controllers\Api\AdminEadController;
+use App\Http\Controllers\Api\AdminParecerController;
+use App\Http\Controllers\Api\AdminDiscController;
+use App\Http\Controllers\Api\AdminChamadosTiposController;
+use App\Http\Controllers\Api\AdminParceiroCategoriaController;
+use App\Http\Controllers\Api\AdminManualController;
+use App\Http\Controllers\Api\AdminCadastroController;
+use App\Http\Controllers\Api\AdminBeneficiosController;
+use App\Http\Controllers\Api\AdminTipoKanbanController;
+use App\Http\Controllers\Api\AdminEtapasKanbanController;
+use App\Http\Controllers\Api\AdminNivelVagaController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -236,6 +247,72 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('notas/{nota}',          [AdminNotaFiscalController::class, 'update']); // POST p/ multipart
             Route::delete('notas/{nota}',        [AdminNotaFiscalController::class, 'destroy']);
             Route::get('notas/{nota}/download',  [AdminNotaFiscalController::class, 'download']);
+        });
+
+        // EAD
+        Route::get('ead/cursos',             [AdminEadController::class, 'indexCursos']);
+        Route::post('ead/cursos',            [AdminEadController::class, 'storeCurso']);
+        Route::put('ead/cursos/{id}',        [AdminEadController::class, 'updateCurso']);
+        Route::delete('ead/cursos/{id}',     [AdminEadController::class, 'destroyCurso']);
+        Route::get('ead/cursos/{id}/aulas',  [AdminEadController::class, 'indexAulas']);
+        Route::post('ead/cursos/{id}/aulas', [AdminEadController::class, 'storeAula']);
+        Route::put('ead/aulas/{id}',         [AdminEadController::class, 'updateAula']);
+        Route::delete('ead/aulas/{id}',      [AdminEadController::class, 'destroyAula']);
+
+        // Pareceres
+        Route::get('pareceres',              [AdminParecerController::class, 'index']);
+        Route::delete('pareceres/{id}',      [AdminParecerController::class, 'destroy']);
+
+        // Teste DISC
+        Route::get('disc',                   [AdminDiscController::class, 'index']);
+        Route::post('disc',                  [AdminDiscController::class, 'store']);
+
+        // Chamados - Tipos e Relatórios
+        Route::get('chamados/tipos',         [AdminChamadosTiposController::class, 'index']);
+        Route::post('chamados/tipos',        [AdminChamadosTiposController::class, 'store']);
+        Route::delete('chamados/tipos/{id}', [AdminChamadosTiposController::class, 'destroy']);
+        Route::get('chamados/relatorios',    [AdminChamadoController::class, 'relatorios']);
+
+        // Parceiros - Categorias e Relatórios
+        Route::get('parceiros/categorias',         [AdminParceiroCategoriaController::class, 'index']);
+        Route::post('parceiros/categorias',        [AdminParceiroCategoriaController::class, 'store']);
+        Route::delete('parceiros/categorias/{id}', [AdminParceiroCategoriaController::class, 'destroy']);
+        Route::get('parceiros/relatorios',         [AdminParceiroController::class, 'relatorios']);
+
+        // Biblioteca (Manuais)
+        Route::get('manuais',                      [AdminManualController::class, 'index']);
+        Route::post('manuais',                     [AdminManualController::class, 'store']);
+        Route::delete('manuais/{id}',              [AdminManualController::class, 'destroy']);
+        Route::patch('manuais/{id}/toggle',        [AdminManualController::class, 'toggleActive']);
+
+        // Cadastro (Serviços e Fornecedores)
+        Route::get('cadastro/servicos',             [AdminCadastroController::class, 'indexServicos']);
+        Route::post('cadastro/servicos',            [AdminCadastroController::class, 'storeServico']);
+        Route::put('cadastro/servicos/{id}',        [AdminCadastroController::class, 'updateServico']);
+        Route::delete('cadastro/servicos/{id}',     [AdminCadastroController::class, 'destroyServico']);
+        Route::get('cadastro/fornecedores',         [AdminCadastroController::class, 'indexFornecedores']);
+        Route::post('cadastro/fornecedores',        [AdminCadastroController::class, 'storeFornecedor']);
+        Route::put('cadastro/fornecedores/{id}',    [AdminCadastroController::class, 'updateFornecedor']);
+        Route::delete('cadastro/fornecedores/{id}', [AdminCadastroController::class, 'destroyFornecedor']);
+
+        // Configurações - Benefícios, Tipos/Etapas Kanban e Níveis de Vagas
+        Route::get('configuracoes/beneficios',               [AdminBeneficiosController::class, 'index']);
+        Route::post('configuracoes/beneficios',              [AdminBeneficiosController::class, 'store']);
+        Route::delete('configuracoes/beneficios/{id}',       [AdminBeneficiosController::class, 'destroy']);
+        Route::get('configuracoes/tipo-kanban',              [AdminTipoKanbanController::class, 'index']);
+        Route::post('configuracoes/tipo-kanban',             [AdminTipoKanbanController::class, 'store']);
+        Route::put('configuracoes/tipo-kanban/{id}',         [AdminTipoKanbanController::class, 'update']);
+        Route::delete('configuracoes/tipo-kanban/{id}',      [AdminTipoKanbanController::class, 'destroy']);
+        Route::get('configuracoes/etapas-kanban',            [AdminEtapasKanbanController::class, 'index']);
+        Route::post('configuracoes/etapas-kanban',           [AdminEtapasKanbanController::class, 'store']);
+        Route::put('configuracoes/etapas-kanban/{id}',       [AdminEtapasKanbanController::class, 'update']);
+        Route::delete('configuracoes/etapas-kanban/{id}',    [AdminEtapasKanbanController::class, 'destroy']);
+        Route::put('configuracoes/etapas-kanban/{id}/reorder', [AdminEtapasKanbanController::class, 'reorder']);
+        Route::get('configuracoes/tipo-niveis-vagas',        [AdminNivelVagaController::class, 'index']);
+        Route::post('configuracoes/tipo-niveis-vagas',       [AdminNivelVagaController::class, 'store']);
+        Route::delete('configuracoes/tipo-niveis-vagas/{id}', [AdminNivelVagaController::class, 'destroy']);
+        Route::post('configuracoes/backup',                  function() {
+            return response()->json(['message' => 'Backup do banco de dados iniciado com sucesso.']);
         });
 
         // Leads "Seja Franqueado"

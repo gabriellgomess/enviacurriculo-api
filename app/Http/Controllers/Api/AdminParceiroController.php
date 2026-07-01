@@ -188,4 +188,24 @@ class AdminParceiroController extends Controller
 
         return response()->json($parceiro->fresh());
     }
+
+    public function relatorios()
+    {
+        $visualizacoes = \App\Models\ParceiroVisualizacao::with('parceiro:id,nome_empresa')
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get();
+
+        $mapped = $visualizacoes->map(fn($v) => [
+            'id'                     => $v->id,
+            'parceiro'               => ['nome_empresa' => $v->parceiro ? $v->parceiro->nome_empresa : '-'],
+            'visualizado_por_nome'   => $v->empresa_nome . ' (' . $v->usuario_nome . ')',
+            'tipo_visualizacao'      => $v->tipo,
+            'created_at'             => $v->created_at->toIso8601String(),
+        ]);
+
+        return response()->json([
+            'data' => $mapped
+        ]);
+    }
 }
