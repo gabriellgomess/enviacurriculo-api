@@ -7,5 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 class FranquiaFornecedor extends Model
 {
     protected $table    = 'franquia_fornecedores';
-    protected $fillable = ['franquia_id', 'nome', 'cnpj', 'email', 'telefone', 'categoria'];
+    protected $fillable = ['franquia_id', 'nome', 'cnpj', 'email', 'telefone', 'endereco', 'observacao', 'ativo', 'categoria'];
+    protected $casts    = ['ativo' => 'boolean'];
 }

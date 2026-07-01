@@ -29,6 +29,7 @@ class AdminCadastroController extends Controller
         $validated = $request->validate([
             'nome'       => 'required|string|max:255',
             'descricao'  => 'nullable|string',
+            'tipo'       => 'nullable|in:credito,avulso,recorrente',
             'valor_base' => 'nullable|numeric',
         ]);
 
@@ -48,6 +49,7 @@ class AdminCadastroController extends Controller
         $validated = $request->validate([
             'nome'       => 'required|string|max:255',
             'descricao'  => 'nullable|string',
+            'tipo'       => 'required|in:credito,avulso,recorrente',
             'valor_base' => 'nullable|numeric',
             'active'     => 'required|boolean',
         ]);
@@ -77,15 +79,19 @@ class AdminCadastroController extends Controller
     public function storeFornecedor(Request $request)
     {
         $validated = $request->validate([
-            'nome'      => 'required|string|max:255',
-            'cnpj'      => 'nullable|string|max:18',
-            'email'     => 'nullable|email',
-            'telefone'  => 'nullable|string|max:20',
-            'categoria' => 'nullable|string|max:50',
+            'nome'       => 'required|string|max:255',
+            'cnpj'       => 'nullable|string|max:18',
+            'email'      => 'nullable|email',
+            'telefone'   => 'nullable|string|max:20',
+            'endereco'   => 'nullable|string|max:255',
+            'observacao' => 'nullable|string',
+            'ativo'      => 'nullable|boolean',
+            'categoria'  => 'nullable|string|max:50',
         ]);
 
         $fornecedor = FranquiaFornecedor::create($validated + [
             'franquia_id' => $this->getFranquiaId(),
+            'ativo'       => $validated['ativo'] ?? true,
         ]);
 
         return response()->json(['message' => 'Fornecedor cadastrado com sucesso.', 'data' => $fornecedor], 201);
@@ -97,11 +103,14 @@ class AdminCadastroController extends Controller
         $fornecedor = FranquiaFornecedor::findOrFail($id);
 
         $validated = $request->validate([
-            'nome'      => 'required|string|max:255',
-            'cnpj'      => 'nullable|string|max:18',
-            'email'     => 'nullable|email',
-            'telefone'  => 'nullable|string|max:20',
-            'categoria' => 'nullable|string|max:50',
+            'nome'       => 'required|string|max:255',
+            'cnpj'       => 'nullable|string|max:18',
+            'email'      => 'nullable|email',
+            'telefone'   => 'nullable|string|max:20',
+            'endereco'   => 'nullable|string|max:255',
+            'observacao' => 'nullable|string',
+            'ativo'      => 'required|boolean',
+            'categoria'  => 'nullable|string|max:50',
         ]);
 
         $fornecedor->update($validated);
