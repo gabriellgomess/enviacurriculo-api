@@ -128,24 +128,117 @@ class AdminChamadoController extends Controller
             $query->whereDate('created_at', '<=', $request->data_fim);
         }
 
-        $chamados = $query->get();
+        if ($request->filled('busca')) {
+            $s = $request->busca;
+            $query->where(function ($q) use ($s) {
+                $q->where('titulo', 'like', "%{$s}%")
+                  ->orWhere('categoria', 'like', "%{$s}%")
+                  ->orWhereHas('franquia', function ($f) use ($s) {
+                      $f->where('nome', 'like', "%{$s}%");
+                  });
+            });
+        }
 
-        $data = $chamados->map(function ($c) {
+        $chamados = $query->get();
+        $reportType = $request->input('report_type', 'resumo_status');
+
+        $data = $chamados->map(function ($c) use ($reportType) {
             $diffSeconds = strtotime($c->updated_at) - strtotime($c->created_at);
             $days = max(1, (int) ceil($diffSeconds / (60 * 60 * 24)));
 
-            return [
-                'Número'             => $c->id,
-                'Assunto'            => $c->titulo,
-                'Franquia'           => $c->franquia ? $c->franquia->nome : '-',
-                'Tipo'               => ucfirst($c->categoria),
-                'Status'             => $c->status,
-                'Data Abertura'      => $c->created_at->format('d/MM/Y'),
-                'Última Atualização' => $c->updated_at->format('d/MM/Y'),
-                'Dias'               => (string) $days,
-            ];
+            $numero = (string)$c->id;
+            $assunto = $c->titulo;
+            $franquia = $c->franquia ? $c->franquia->nome : '-';
+            $tipo = ucfirst($c->categoria ?? 'geral');
+            $status = $c->status;
+            $dataAbertura = $c->created_at->format('d/m/Y');
+            $ultimaAtualizacao = $c->updated_at->format('d/m/Y');
+
+            if ($reportType === 'tempo_resolucao') {
+                return [
+                    'Número'             => $numero,
+                    'Assunto'            => $assunto,
+                    'Franquia'           => $franquia,
+                    'Status'             => $status,
+                    'Data Abertura'      => $dataAbertura,
+                    'Última Atualização' => $ultimaAtualizacao,
+                    'Dias'               => (string)$days,
+                ];
+            } elseif ($reportType === 'por_tipo') {
+                return [
+                    'Tipo'          => $tipo,
+                    'Número'         => $numero,
+                    'Assunto'        => $assunto,
+                    'Franquia'       => $franquia,
+                    'Status'         => $status,
+                    'Data Abertura'  => $dataAbertura,
+                ];
+            } else { // resumo_status
+                return [
+                    'Número'        => $numero,
+                    'Assunto'       => $assunto,
+                    'Franquia'      => $franquia,
+                    'Tipo'          => $tipo,
+                    'Status'        => $status,
+                    'Data Abertura' => $dataAbertura,
+                ];
+            }
         });
 
         return response()->json(['data' => $data]);
+    }
+
+    // GET /api/admin/contatos-site
+    public function indexContatos(Request $request)
+    {
+        $query = \App\Models\ContatoSite::orderByDesc('created_at');
+
+        if ($request->filled('busca')) {
+            $s = $request->busca;
+            $query->where(function ($q) use ($s) {
+                $q->where('nome_completo', 'like', "%{$s}%")
+                  ->orWhere('email', 'like', "%{$s}%")
+                  ->orWhere('mensagem', 'like', "%{$s}%");
+            });
+        }
+
+        if ($request->filled('status') && $request->status !== 'todos') {
+            $query->where('status', $request->status);
+        }
+
+        $contatos = $query->paginate(20);
+
+        return response()->json([
+            'data' => $contatos->items(),
+            'meta' => [
+                'total'        => $contatos->total(),
+                'per_page'     => $contatos->perPage(),
+                'current_page' => $contatos->currentPage(),
+                'last_page'    => $contatos->lastPage(),
+            ],
+        ]);
+    }
+
+    // PATCH /api/admin/contatos-site/{id}/status
+    public function updateContatoStatus(Request $request, int $id)
+    {
+        $contato = \App\Models\ContatoSite::findOrFail($id);
+
+        $validated = $request->validate([
+            'status' => 'required|in:novo,lido,respondido',
+        ]);
+
+        $contato->update(['status' => $validated['status']]);
+
+        return response()->json(['message' => 'Status do contato atualizado.', 'data' => $contato]);
+    }
+
+    // DELETE /api/admin/contatos-site/{id}
+    public function destroyContato(int $id)
+    {
+        $contato = \App\Models\ContatoSite::findOrFail($id);
+        $contato->delete();
+
+        return response()->json(['message' => 'Contato excluído com sucesso.']);
     }
 }

@@ -225,6 +225,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('chamados/tipos/{id}', [AdminChamadosTiposController::class, 'destroy']);
         Route::get('chamados/relatorios',    [AdminChamadoController::class, 'relatorios']);
 
+        // Fale Conosco (Mensagens de contato do site)
+        Route::get('contatos-site',                  [AdminChamadoController::class, 'indexContatos']);
+        Route::patch('contatos-site/{id}/status',    [AdminChamadoController::class, 'updateContatoStatus']);
+        Route::delete('contatos-site/{id}',          [AdminChamadoController::class, 'destroyContato']);
+
         // Chamados Resource (suporte das franquias)
         Route::get('chamados',                         [AdminChamadoController::class, 'index']);
         Route::get('chamados/{id}',                    [AdminChamadoController::class, 'show']);
