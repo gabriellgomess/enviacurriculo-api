@@ -70,14 +70,26 @@ class AdminEadController extends Controller
 
         $validated = $request->validate([
             'titulo'          => 'required|string|max:255',
+            'modulo'          => 'nullable|string|max:100',
+            'video_url'       => 'nullable|string|max:255',
+            'video'           => 'nullable|file|max:102400|mimes:mp4,mov,avi,webm',
             'duracao_minutos' => 'required|integer|min:1',
         ]);
+
+        $videoUrl = $validated['video_url'] ?? null;
+
+        if ($request->hasFile('video')) {
+            $path = $request->file('video')->store('ead/videos', 'public');
+            $videoUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($path);
+        }
 
         $nextOrdem = $curso->aulas()->max('ordem') + 1;
 
         $aula = EadAula::create([
             'curso_id'        => $curso->id,
+            'modulo'          => $validated['modulo'] ?? null,
             'titulo'          => $validated['titulo'],
+            'video_url'       => $videoUrl,
             'duracao_minutos' => $validated['duracao_minutos'],
             'ordem'           => $nextOrdem,
         ]);
@@ -92,11 +104,31 @@ class AdminEadController extends Controller
 
         $validated = $request->validate([
             'titulo'          => 'required|string|max:255',
+            'modulo'          => 'nullable|string|max:100',
+            'video_url'       => 'nullable|string|max:255',
+            'video'           => 'nullable|file|max:102400|mimes:mp4,mov,avi,webm',
             'duracao_minutos' => 'required|integer|min:1',
             'ordem'           => 'required|integer',
         ]);
 
-        $aula->update($validated);
+        $videoUrl = $validated['video_url'] ?? $aula->video_url;
+
+        if ($request->hasFile('video')) {
+            if ($aula->video_url && str_contains($aula->video_url, 'storage/ead/videos')) {
+                $oldPath = str_replace(url('storage/'), '', $aula->video_url);
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($oldPath);
+            }
+            $path = $request->file('video')->store('ead/videos', 'public');
+            $videoUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($path);
+        }
+
+        $aula->update([
+            'modulo'          => $validated['modulo'] ?? $aula->modulo,
+            'titulo'          => $validated['titulo'],
+            'video_url'       => $videoUrl,
+            'duracao_minutos' => $validated['duracao_minutos'],
+            'ordem'           => $validated['ordem'],
+        ]);
 
         return response()->json(['message' => 'Aula atualizada com sucesso.', 'data' => $aula]);
     }
