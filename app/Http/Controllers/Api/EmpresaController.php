@@ -332,6 +332,54 @@ class EmpresaController extends Controller
         return response()->json(NivelVaga::orderBy('ordem')->orderBy('nome')->get());
     }
 
+    public function relatorios(Request $request)
+    {
+        $query = Empresa::withCount([
+            'vagas as vagas_abertas_count' => function ($q) {
+                $q->where('status', 'aberta');
+            },
+            'vagas as vagas_fechadas_count' => function ($q) {
+                $q->where('status', 'fechada');
+            }
+        ])->with('franquia:id,nome');
+
+        if ($request->filled('busca')) {
+            $s = $request->busca;
+            $query->where(function ($q) use ($s) {
+                $q->where('razao_social', 'like', "%{$s}%")
+                  ->orWhere('nome_fantasia', 'like', "%{$s}%")
+                  ->orWhere('cnpj', 'like', "%{$s}%")
+                  ->orWhere('cidade', 'like', "%{$s}%");
+            });
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('plano')) {
+            $query->where('plano', $request->plano);
+        }
+
+        $empresas = $query->orderBy('razao_social')->get();
+
+        $data = $empresas->map(function ($e) {
+            return [
+                'Razão Social'   => $e->razao_social,
+                'Nome Fantasia'  => $e->nome_fantasia ?? '—',
+                'CNPJ'           => $e->cnpj ?? '—',
+                'Franquia'       => $e->franquia?->nome ?? 'Direta / Sem Franquia',
+                'Plano'          => ucfirst($e->plano ?? 'básico'),
+                'Status'         => ucfirst($e->status ?? 'pendente'),
+                'Cidade/UF'      => ($e->cidade && $e->estado) ? "{$e->cidade}/{$e->estado}" : '—',
+                'Vagas Abertas'  => $e->vagas_abertas_count,
+                'Vagas Fechadas' => $e->vagas_fechadas_count,
+            ];
+        });
+
+        return response()->json(['data' => $data]);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────
 
     private function gerarCodigo(): string

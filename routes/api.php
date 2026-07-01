@@ -187,9 +187,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('franquias/{franquia}/documentos/{documento}/download', [FranquiaDocumentoController::class, 'download']);
 
         // Empresas
-        Route::get('empresas/niveis-vagas', [EmpresaController::class, 'niveisVagas']);
+        Route::get('empresas/relatorios',          [EmpresaController::class, 'relatorios']);
+        Route::get('empresas/niveis-vagas',        [EmpresaController::class, 'niveisVagas']);
         Route::get('empresas/beneficios-catalogo', [EmpresaController::class, 'beneficiosCatalogo']);
-        Route::apiResource('empresas', EmpresaController::class);
+        Route::apiResource('empresas',             EmpresaController::class);
         Route::patch('empresas/{empresa}/status', [EmpresaController::class, 'changeStatus']);
         // Follow-ups
         Route::post('empresas/{empresa}/followups', [EmpresaController::class, 'storeFollowup']);
