@@ -40,6 +40,8 @@ class Vaga extends Model
         'genero',
         'turno',
         'horario_trabalho',
+        'nome_requisitante',
+        'email_requisitante',
         'logradouro',
         'numero',
     ];

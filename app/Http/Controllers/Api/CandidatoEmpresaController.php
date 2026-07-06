@@ -32,7 +32,8 @@ class CandidatoEmpresaController extends Controller
         if ($request->filled('estado')) $query->where('estado', $request->estado);
         if ($request->filled('cidade')) $query->where('cidade', 'like', "%{$request->cidade}%");
 
-        $empresas = $query->orderBy('razao_social')->paginate(20);
+        $perPage = min((int) $request->input('per_page', 20), 200);
+        $empresas = $query->orderBy('razao_social')->paginate($perPage);
 
         return response()->json([
             'data' => $empresas->items(),

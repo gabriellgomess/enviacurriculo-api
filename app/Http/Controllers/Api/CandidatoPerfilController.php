@@ -21,6 +21,15 @@ class CandidatoPerfilController extends Controller
         $c = $this->candidatoDoUsuario();
         $c->load('user:id,name,email,phone');
 
+        return response()->json(['data' => $this->comCurriculo($c)]);
+    }
+
+    /**
+     * Anexa curriculo_nome/curriculo_url ao array do candidato — usado tanto no show()
+     * quanto no update(), pra o front não perder esses campos ao salvar o perfil.
+     */
+    private function comCurriculo(Candidato $c): array
+    {
         $doc = CandidatoDocumento::where('candidato_id', $c->id)
             ->where('tipo', 'curriculo')
             ->where('ativo', true)
@@ -31,7 +40,7 @@ class CandidatoPerfilController extends Controller
         $data['curriculo_nome'] = $doc?->arquivo_nome;
         $data['curriculo_url']  = $doc ? Storage::disk('public')->url($doc->arquivo_path) : null;
 
-        return response()->json(['data' => $data]);
+        return $data;
     }
 
     // PUT /candidato/perfil
@@ -65,6 +74,9 @@ class CandidatoPerfilController extends Controller
             'experiencia_profissional' => 'nullable|string',
             'educacao'                 => 'nullable|string',
             'habilidades'              => 'nullable|string',
+            'idiomas'                  => 'nullable|string|max:500',
+            'cargos_interesse'         => 'nullable|array',
+            'cargos_interesse.*'       => 'string|max:100',
             'name'                     => 'nullable|string|max:255',
         ]);
 
@@ -82,7 +94,7 @@ class CandidatoPerfilController extends Controller
 
         return response()->json([
             'message'   => 'Perfil atualizado.',
-            'candidato' => $c->fresh()->load('user:id,name,email,phone'),
+            'candidato' => $this->comCurriculo($c->fresh()->load('user:id,name,email,phone')),
         ]);
     }
 

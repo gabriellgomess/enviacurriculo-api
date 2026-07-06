@@ -124,6 +124,9 @@ Route::prefix('parceiro/cadastro')->group(function () {
     Route::post('/', [\App\Http\Controllers\Api\ParceiroCadastroController::class, 'store']);
 });
 
+// Webhook do gateway de pagamento Asaas (créditos do candidato) — ver ASAAS_SETUP.md
+Route::post('webhooks/asaas', [\App\Http\Controllers\Api\AsaasWebhookController::class, 'handle']);
+
 /*
 |--------------------------------------------------------------------------
 | Rotas protegidas — requerem token Sanctum
@@ -377,6 +380,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('perfil',       [EmpresaPerfilController::class, 'show']);
         Route::put('perfil',       [EmpresaPerfilController::class, 'update']);
         Route::post('perfil/logo', [EmpresaPerfilController::class, 'uploadLogo']);
+        Route::get('taxas',        [EmpresaPerfilController::class, 'taxas']);
+        Route::get('documentos-agencia', [EmpresaPerfilController::class, 'documentosAgencia']);
+
+        // Notificações
+        Route::get('notificacoes',            [\App\Http\Controllers\Api\EmpresaNotificacaoController::class, 'index']);
+        Route::patch('notificacoes/{id}/lida', [\App\Http\Controllers\Api\EmpresaNotificacaoController::class, 'marcarLida']);
+        Route::post('notificacoes/lidas',     [\App\Http\Controllers\Api\EmpresaNotificacaoController::class, 'marcarLidas']);
 
         // Dashboard
         Route::get('dashboard',           [EmpresaDashboardController::class, 'index']);
@@ -385,6 +395,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Vagas
         Route::get('vagas',                      [\App\Http\Controllers\Api\EmpresaVagaController::class, 'index']);
         Route::post('vagas',                     [\App\Http\Controllers\Api\EmpresaVagaController::class, 'store']);
+        Route::get('vagas/niveis',               [\App\Http\Controllers\Api\EmpresaVagaController::class, 'niveis']);
         Route::get('vagas/{id}',                 [\App\Http\Controllers\Api\EmpresaVagaController::class, 'show']);
         Route::put('vagas/{id}',                 [\App\Http\Controllers\Api\EmpresaVagaController::class, 'update']);
         Route::delete('vagas/{id}',              [\App\Http\Controllers\Api\EmpresaVagaController::class, 'destroy']);
@@ -514,6 +525,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('vagas',                              [FranquiaVagaController::class, 'index']);
         Route::post('vagas',                             [FranquiaVagaController::class, 'store']);
         Route::get('vagas/niveis',                       [FranquiaVagaController::class, 'niveis']);
+        Route::get('vagas/franquias',                    [FranquiaVagaController::class, 'franquiasDisponiveis']);
         Route::get('vagas/{id}',                         [FranquiaVagaController::class, 'show']);
         Route::put('vagas/{id}',                         [FranquiaVagaController::class, 'update']);
         Route::delete('vagas/{id}',                      [FranquiaVagaController::class, 'destroy']);
@@ -527,7 +539,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Candidatos — rotas estáticas ANTES das dinâmicas com {id}
         Route::get('candidatos/status',                  [FranquiaCandidatoController::class, 'status']);
+        Route::get('candidatos/discs',                   [FranquiaCandidatoController::class, 'discs']);
         Route::get('candidatos/pareceres',               [FranquiaCandidatoController::class, 'pareceres']);
+        Route::patch('candidatos/pareceres/{id}/status', [FranquiaCandidatoController::class, 'atualizarStatusParecer']);
         Route::put('candidatos/parecer/{id}',            [FranquiaCandidatoController::class, 'updateParecer']);
         Route::delete('candidatos/parecer/{id}',         [FranquiaCandidatoController::class, 'destroyParecer']);
         // Pareceres das empresas da franquia (fluxo de validacao premium)
@@ -554,6 +568,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('empresas/{id}/followups',                  [FranquiaEmpresaGestaoController::class, 'indexFollowups']);
         Route::post('empresas/{id}/followups',                 [FranquiaEmpresaGestaoController::class, 'storeFollowup']);
         Route::put('empresas/{id}/followups/{followupId}',     [FranquiaEmpresaGestaoController::class, 'updateFollowup']);
+        Route::get('empresas/{id}/beneficios',                 [FranquiaEmpresaGestaoController::class, 'indexBeneficios']);
+        Route::get('empresas/{id}/documentos',                 [FranquiaEmpresaGestaoController::class, 'indexDocumentos']);
+        Route::post('empresas/{id}/documentos',                [FranquiaEmpresaGestaoController::class, 'storeDocumento']);
+        Route::delete('empresas/{id}/documentos/{docId}',      [FranquiaEmpresaGestaoController::class, 'destroyDocumento']);
 
         // Parceiros
         Route::get('parceiros',                          [FranquiaParceiroGestaoController::class, 'index']);
@@ -626,6 +644,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Agenda
         Route::get('agenda',                             [FranquiaAgendaController::class, 'index']);
+        Route::get('agenda/aniversariantes',             [FranquiaAgendaController::class, 'aniversariantes']);
         Route::post('agenda',                            [FranquiaAgendaController::class, 'store']);
         Route::put('agenda/{id}',                        [FranquiaAgendaController::class, 'update']);
         Route::delete('agenda/{id}',                     [FranquiaAgendaController::class, 'destroy']);
@@ -671,6 +690,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('creditos/extrato',  [CandidatoCreditoController::class, 'extrato']);
         Route::get('creditos/pacotes',  [CandidatoCreditoController::class, 'pacotes']);
         Route::post('creditos/comprar', [CandidatoCreditoController::class, 'comprar']);
+        Route::get('creditos/compras/{id}/status', [CandidatoCreditoController::class, 'statusCompra']);
 
         // Parceiros
         Route::get('parceiros',      [CandidatoParceiroController::class, 'index']);
@@ -701,6 +721,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Agenda
         Route::get('agenda',                        [ParceiroAgendaController::class, 'index']);
+        Route::post('agenda',                       [ParceiroAgendaController::class, 'store']);
         Route::patch('agenda/{id}/confirmar',       [ParceiroAgendaController::class, 'confirmar']);
         Route::patch('agenda/{id}/concluir',        [ParceiroAgendaController::class, 'concluir']);
         Route::patch('agenda/{id}/cancelar',        [ParceiroAgendaController::class, 'cancelar']);

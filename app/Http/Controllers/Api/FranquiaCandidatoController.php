@@ -226,6 +226,7 @@ class FranquiaCandidatoController extends Controller
 
         $query = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)
             ->with('user:id,name,email')
+            ->withExists('pareceres as tem_parecer')
             ->where('active', true);
 
         if ($request->filled('cargo')) {
@@ -254,6 +255,8 @@ class FranquiaCandidatoController extends Controller
             'disponibilidade'  => $c->disponibilidade,
             'curriculo_ativo'  => null, // carregado on-demand no show
             'ultimo_envio'     => $c->envios()->whereIn('vaga_id', $vagaIds)->latest()->value('created_at'),
+            'tem_parecer'      => (bool) $c->tem_parecer,
+            'created_at'       => $c->created_at,
         ]);
 
         return response()->json([
@@ -304,12 +307,13 @@ class FranquiaCandidatoController extends Controller
             ->paginate(20);
 
         $items = $pareceres->getCollection()->map(fn($p) => [
-            'id'        => $p->id,
-            'candidato' => ['id' => $p->candidato_id, 'nome' => $p->candidato?->user?->name],
-            'vaga'      => $p->vaga ? ['id' => $p->vaga_id, 'titulo' => $p->vaga->titulo] : null,
-            'texto'     => $p->texto,
-            'nota'      => $p->nota,
-            'created_at'=> $p->created_at,
+            'id'               => $p->id,
+            'candidato'        => ['id' => $p->candidato_id, 'nome' => $p->candidato?->user?->name],
+            'vaga'             => $p->vaga ? ['id' => $p->vaga_id, 'titulo' => $p->vaga->titulo] : null,
+            'texto'            => $p->texto,
+            'nota'             => $p->nota,
+            'status_aprovacao' => $p->status_aprovacao,
+            'created_at'       => $p->created_at,
         ]);
 
         return response()->json([
@@ -320,6 +324,24 @@ class FranquiaCandidatoController extends Controller
                 'current_page' => $pareceres->currentPage(),
                 'last_page'    => $pareceres->lastPage(),
             ],
+        ]);
+    }
+
+    // PATCH /franquia/candidatos/pareceres/{id}/status
+    public function atualizarStatusParecer(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $parecer = CandidatoParecer::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $data = $request->validate([
+            'status_aprovacao' => 'required|in:aprovado,reprovado',
+        ]);
+
+        $parecer->update(['status_aprovacao' => $data['status_aprovacao']]);
+
+        return response()->json([
+            'message' => 'Status do parecer atualizado.',
+            'data'    => ['id' => $parecer->id, 'status_aprovacao' => $parecer->status_aprovacao],
         ]);
     }
 
@@ -441,6 +463,13 @@ class FranquiaCandidatoController extends Controller
         }
 
         $candidato = Candidato::findOrFail($candidatoId);
+
+        if (!$candidato->pareceres()->exists()) {
+            return response()->json([
+                'message' => 'Candidato precisa ter um parecer registrado antes de ser vinculado a uma vaga.',
+            ], 422);
+        }
+
         $curriculo = $candidato->documentos()->where('ativo', true)->first()
             ?? $candidato->documentos()->latest()->first();
 
@@ -483,7 +512,7 @@ class FranquiaCandidatoController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
-        $pareceres = CandidatoParecer::with(['criador:id,name', 'vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social', 'franquia:id,nome'])
+        $pareceres = CandidatoParecer::with(['criador:id,name', 'vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social', 'empresa:id,razao_social', 'franquia:id,nome'])
             ->where('candidato_id', $id)
             ->orderByDesc('created_at')
             ->get()
@@ -494,7 +523,7 @@ class FranquiaCandidatoController extends Controller
                     'parecer'           => $isOwn ? $p->texto : '[Conteúdo restrito à franquia de origem]',
                     'nota'              => $isOwn ? $p->nota : null,
                     'cargo_pretendido'  => $p->vaga?->titulo,
-                    'empresa_nome'      => $p->vaga?->empresa?->razao_social,
+                    'empresa_nome'      => $p->empresa?->razao_social ?? $p->vaga?->empresa?->razao_social,
                     'criado_por_nome'   => $p->criador?->name,
                     'franquia_nome'     => $p->franquia?->nome ?? 'Outra Franquia',
                     'is_own'            => $isOwn,
@@ -511,15 +540,17 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
 
         $validated = $request->validate([
-            'vaga_id' => 'nullable|integer|exists:vagas,id',
-            'texto'   => 'required|string|max:5000',
-            'nota'    => 'nullable|integer|min:1|max:5',
+            'vaga_id'    => 'nullable|integer|exists:vagas,id',
+            'empresa_id' => 'nullable|integer|exists:empresas,id',
+            'texto'      => 'required|string|max:5000',
+            'nota'       => 'nullable|integer|min:1|max:5',
         ]);
 
         $parecer = CandidatoParecer::create([
             'franquia_id' => $franquiaId,
             'candidato_id'=> $id,
             'vaga_id'     => $validated['vaga_id'] ?? null,
+            'empresa_id'  => $validated['empresa_id'] ?? null,
             'criado_por'  => $request->user()->id,
             'texto'       => $validated['texto'],
             'nota'        => $validated['nota'] ?? null,
@@ -562,6 +593,48 @@ class FranquiaCandidatoController extends Controller
 
         return response()->json([
             'message' => 'Parecer excluído com sucesso.',
+        ]);
+    }
+
+    // GET /franquia/candidatos/discs  (lista de resultados DISC já aplicados)
+    public function discs(Request $request)
+    {
+        $franquiaId   = $this->tokenContextId($request);
+        $vagaIds      = $this->vagaIds($franquiaId);
+        $candidatoIds = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)->pluck('id');
+
+        $query = \App\Models\CandidatoDisc::whereIn('candidato_id', $candidatoIds)
+            ->with(['candidato.user:id,name', 'aplicador:id,name'])
+            ->orderByDesc('created_at');
+
+        if ($request->filled('search')) {
+            $term = '%' . $request->search . '%';
+            $query->whereHas('candidato.user', fn($q) => $q->where('name', 'like', $term));
+        }
+
+        $resultados = $query->paginate(min((int) $request->query('per_page', 20), 100));
+
+        $items = collect($resultados->items())->map(fn($d) => [
+            'id'                => $d->id,
+            'candidato_id'      => $d->candidato_id,
+            'candidato_nome'    => $d->candidato?->user?->name,
+            'perfil_dominante'  => $d->perfil_dominante,
+            'score_d'           => $d->score_d,
+            'score_i'           => $d->score_i,
+            'score_s'           => $d->score_s,
+            'score_c'           => $d->score_c,
+            'aplicado_por_nome' => $d->aplicador?->name,
+            'created_at'        => $d->created_at,
+        ]);
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'total'        => $resultados->total(),
+                'per_page'     => $resultados->perPage(),
+                'current_page' => $resultados->currentPage(),
+                'last_page'    => $resultados->lastPage(),
+            ],
         ]);
     }
 

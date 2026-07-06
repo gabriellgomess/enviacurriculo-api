@@ -30,6 +30,13 @@ class EmpresaVagaController extends Controller
         'cancelada'    => 'cancelada',
     ];
 
+    // GET /empresa/vagas/niveis
+    public function niveis(Request $request)
+    {
+        $niveis = \App\Models\NivelVaga::orderBy('ordem')->orderBy('nome')->get(['id', 'nome', 'ordem']);
+        return response()->json(['data' => $niveis]);
+    }
+
     public function index(Request $request)
     {
         $empresaId = $this->tokenContextId($request);
@@ -215,6 +222,7 @@ class EmpresaVagaController extends Controller
             'canal'                => $v->canal,
             'modalidade'           => $v->regime_trabalho,
             'tipo_contrato'        => $v->tipo_contrato,
+            'nivel_vaga_id'        => $v->nivel_vaga_id,
             'cidade'               => $v->cidade,
             'estado'               => $v->estado,
             'numero_posicoes'      => $v->quantidade_vagas,
@@ -237,7 +245,6 @@ class EmpresaVagaController extends Controller
             'beneficios'       => $v->relationLoaded('beneficiosCatalogo')
                 ? $v->beneficiosCatalogo->map(fn($b) => ['id' => $b->id, 'nome' => $b->nome])
                 : [],
-            'nivel_vaga_id'    => $v->nivel_vaga_id,
             'ocultar_empresa'  => $v->ocultar_empresa,
             'ocultar_endereco' => $v->ocultar_endereco,
             'cep'              => $v->cep,

@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
 use App\Models\Empresa;
+use App\Models\Franquia;
 use App\Models\Vaga;
 use Illuminate\Http\Request;
 
@@ -13,7 +14,7 @@ class FranquiaMapaController extends Controller
 {
     use HasTokenContext;
 
-    // GET /franquia/mapa?tipo={vagas|candidatos|empresas|todos}
+    // GET /franquia/mapa?tipo={vagas|candidatos|empresas|franquias|todos}
     public function index(Request $request)
     {
         $franquiaId = $this->tokenContextId($request);
@@ -26,6 +27,7 @@ class FranquiaMapaController extends Controller
             'vagas'      => [],
             'candidatos' => [],
             'empresas'   => [],
+            'franquias'  => [],
         ];
 
         if (in_array($tipo, ['vagas', 'todos'])) {
@@ -81,6 +83,22 @@ class FranquiaMapaController extends Controller
                     'latitude'     => $e->latitude,
                     'longitude'    => $e->longitude,
                     'logo_url'     => $e->logo_url,
+                ]);
+        }
+
+        if (in_array($tipo, ['franquias', 'todos'])) {
+            $data['franquias'] = Franquia::whereNotNull('latitude')
+                ->whereNotNull('longitude')
+                ->where('active', true)
+                ->get(['id', 'nome', 'tipo', 'cidade', 'estado', 'latitude', 'longitude'])
+                ->map(fn($f) => [
+                    'id'        => $f->id,
+                    'nome'      => $f->nome,
+                    'tipo'      => $f->tipo,
+                    'cidade'    => $f->cidade,
+                    'estado'    => $f->estado,
+                    'latitude'  => $f->latitude,
+                    'longitude' => $f->longitude,
                 ]);
         }
 

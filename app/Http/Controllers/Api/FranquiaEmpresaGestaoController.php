@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Empresa;
+use App\Models\EmpresaArquivo;
 use App\Models\EmpresaFollowup;
 use App\Models\Franquia;
 use App\Models\User;
@@ -13,6 +14,7 @@ use App\Models\UserContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 
 class FranquiaEmpresaGestaoController extends Controller
 {
@@ -271,6 +273,63 @@ class FranquiaEmpresaGestaoController extends Controller
         $followup->update(['mensagem' => $request->mensagem]);
 
         return response()->json($followup);
+    }
+
+    // GET /franquia/empresas/{id}/beneficios
+    public function indexBeneficios(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresa    = Empresa::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        return response()->json(['data' => $empresa->beneficios()->get()]);
+    }
+
+    // GET /franquia/empresas/{id}/documentos
+    public function indexDocumentos(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresa    = Empresa::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $documentos = EmpresaArquivo::where('empresa_id', $empresa->id)
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json(['data' => $documentos]);
+    }
+
+    // POST /franquia/empresas/{id}/documentos
+    public function storeDocumento(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresa    = Empresa::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $request->validate(['arquivo' => 'required|file|max:10240']);
+
+        $file = $request->file('arquivo');
+        $path = $file->store('empresas/documentos-agencia', 'public');
+
+        $documento = EmpresaArquivo::create([
+            'empresa_id'   => $empresa->id,
+            'franquia_id'  => $franquiaId,
+            'arquivo_path' => $path,
+            'arquivo_nome' => $file->getClientOriginalName(),
+            'tamanho_kb'   => (int) round($file->getSize() / 1024),
+        ]);
+
+        return response()->json($documento, 201);
+    }
+
+    // DELETE /franquia/empresas/{id}/documentos/{docId}
+    public function destroyDocumento(Request $request, int $id, int $docId)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresa    = Empresa::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $documento = EmpresaArquivo::where('empresa_id', $empresa->id)->findOrFail($docId);
+        Storage::disk('public')->delete($documento->arquivo_path);
+        $documento->delete();
+
+        return response()->json(['message' => 'Documento removido.']);
     }
 
     // POST /franquia/empresas/{id}/reset-password

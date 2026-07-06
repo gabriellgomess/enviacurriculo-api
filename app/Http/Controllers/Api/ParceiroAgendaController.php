@@ -30,6 +30,30 @@ class ParceiroAgendaController extends Controller
         return response()->json(['data' => $query->get()]);
     }
 
+    // POST /parceiro/agenda
+    public function store(Request $request)
+    {
+        $parceiroId = $this->tokenContextId($request);
+
+        $data = $request->validate([
+            'cliente'     => 'required|string|max:255',
+            'email'       => 'nullable|email|max:255',
+            'telefone'    => 'nullable|string|max:20',
+            'servico'     => 'required|string|max:255',
+            'data'        => 'required|date',
+            'duracao_min' => 'nullable|integer|min:1|max:600',
+            'observacao'  => 'nullable|string|max:1000',
+        ]);
+
+        $agendamento = ParceiroAgendamento::create([
+            ...$data,
+            'parceiro_id' => $parceiroId,
+            'status'      => 'pendente',
+        ]);
+
+        return response()->json(['data' => $agendamento], 201);
+    }
+
     // PATCH /parceiro/agenda/{id}/confirmar
     public function confirmar(Request $request, $id)
     {

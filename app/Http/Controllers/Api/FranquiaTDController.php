@@ -111,6 +111,8 @@ class FranquiaTDController extends Controller
         $aulas = $curso->aulas->sortBy('ordem')->map(fn($a) => [
             'id'               => $a->id,
             'titulo'           => $a->titulo,
+            'modulo'           => $a->modulo,
+            'video_url'        => $a->video_url,
             'duracao_minutos'  => $a->duracao_minutos,
             'concluida'        => $progressoMap->contains($a->id),
         ]);

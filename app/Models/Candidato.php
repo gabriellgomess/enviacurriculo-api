@@ -92,4 +92,9 @@ class Candidato extends Model
     {
         return $this->hasMany(CreditoMovimentacao::class);
     }
+
+    public function pareceres()
+    {
+        return $this->hasMany(CandidatoParecer::class);
+    }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
+use App\Models\Candidato;
 use App\Models\FranquiaAgendaEvento;
 use Illuminate\Http\Request;
 
@@ -42,6 +43,7 @@ class FranquiaAgendaController extends Controller
             'candidato_id' => 'nullable|integer|exists:candidatos,id',
             'empresa_id'   => 'nullable|integer|exists:empresas,id',
             'vaga_id'      => 'nullable|integer|exists:vagas,id',
+            'concluido'    => 'nullable|boolean',
         ]);
 
         $evento = FranquiaAgendaEvento::create(array_merge($validated, ['franquia_id' => $franquiaId]));
@@ -66,6 +68,7 @@ class FranquiaAgendaController extends Controller
             'candidato_id' => 'nullable|integer|exists:candidatos,id',
             'empresa_id'   => 'nullable|integer|exists:empresas,id',
             'vaga_id'      => 'nullable|integer|exists:vagas,id',
+            'concluido'    => 'nullable|boolean',
         ]);
 
         $evento->update($validated);
@@ -79,5 +82,34 @@ class FranquiaAgendaController extends Controller
         $franquiaId = $this->tokenContextId($request);
         FranquiaAgendaEvento::where('franquia_id', $franquiaId)->findOrFail($id)->delete();
         return response()->json(['message' => 'Evento removido.']);
+    }
+
+    // GET /franquia/agenda/aniversariantes?mes=
+    public function aniversariantes(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $mes        = (int) $request->query('mes', now()->month);
+
+        $candidatos = Candidato::where('active', true)
+            ->where(function ($q) use ($franquiaId) {
+                $q->whereHas('envios', fn($s) => $s->whereIn('vaga_id', \App\Models\Vaga::where('franquia_id', $franquiaId)->pluck('id')))
+                  ->orWhere('franquia_id', $franquiaId)
+                  ->orWhereNull('franquia_id');
+            })
+            ->whereNotNull('nascimento')
+            ->whereMonth('nascimento', $mes)
+            ->with('user:id,name')
+            ->get()
+            ->map(fn($c) => [
+                'id'         => $c->id,
+                'nome'       => $c->user?->name,
+                'nascimento' => $c->nascimento,
+                'dia'        => $c->nascimento?->day,
+                'cargo_desejado' => $c->cargo_desejado,
+            ])
+            ->sortBy('dia')
+            ->values();
+
+        return response()->json(['data' => $candidatos]);
     }
 }

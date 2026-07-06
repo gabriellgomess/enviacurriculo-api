@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Empresa;
+use App\Models\EmpresaArquivo;
 use App\Services\GeocodeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -18,7 +19,7 @@ class EmpresaPerfilController extends Controller
     // GET /empresa/perfil
     public function show(Request $request)
     {
-        $empresa = Empresa::with('franquia:id,nome,codigo')
+        $empresa = Empresa::with('franquia:id,nome,codigo,email,telefone')
             ->findOrFail($this->tokenContextId($request));
 
         return response()->json([
@@ -71,7 +72,7 @@ class EmpresaPerfilController extends Controller
 
         return response()->json([
             'message' => 'Perfil atualizado.',
-            'empresa' => $this->present($empresa->fresh('franquia:id,nome,codigo')),
+            'empresa' => $this->present($empresa->fresh('franquia:id,nome,codigo,email,telefone')),
         ]);
     }
 
@@ -97,6 +98,40 @@ class EmpresaPerfilController extends Controller
         $empresa->update(['logo_url' => $path]);
 
         return response()->json(['logo_url' => Storage::disk('public')->url($path)]);
+    }
+
+    // GET /empresa/taxas
+    public function taxas(Request $request)
+    {
+        $empresa = Empresa::findOrFail($this->tokenContextId($request));
+
+        $taxas = $empresa->taxasServico()->with('nivelVaga')->get()->map(fn ($t) => [
+            'id'         => $t->id,
+            'nivel_nome' => $t->nivelVaga?->nome,
+            'percentual' => $t->percentual,
+        ]);
+
+        return response()->json(['data' => $taxas]);
+    }
+
+    // GET /empresa/documentos-agencia
+    public function documentosAgencia(Request $request)
+    {
+        $empresa = Empresa::findOrFail($this->tokenContextId($request));
+
+        $documentos = EmpresaArquivo::where('empresa_id', $empresa->id)
+            ->with('franquia:id,nome')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($d) => [
+                'id'             => $d->id,
+                'nome_arquivo'   => $d->arquivo_nome,
+                'arquivo_url'    => Storage::disk('public')->url($d->arquivo_path),
+                'salvo_por_nome' => $d->franquia?->nome,
+                'created_at'     => $d->created_at,
+            ]);
+
+        return response()->json(['data' => $documentos]);
     }
 
     private function present(Empresa $e): array
@@ -129,10 +164,14 @@ class EmpresaPerfilController extends Controller
             'tipo_empresa'     => $e->tipo_empresa,
             'tipo_acesso'      => $e->tipo_acesso,
             'status'           => $e->status,
+            'prazo_vencimento_dias' => $e->prazo_vencimento_dias,
+            'reposicao_dias'        => $e->reposicao_dias,
             'franquia'         => $e->franquia ? [
-                'id'     => $e->franquia->id,
-                'nome'   => $e->franquia->nome,
-                'codigo' => $e->franquia->codigo,
+                'id'       => $e->franquia->id,
+                'nome'     => $e->franquia->nome,
+                'codigo'   => $e->franquia->codigo,
+                'email'    => $e->franquia->email,
+                'telefone' => $e->franquia->telefone,
             ] : null,
             'owner'            => true, // TODO: sub-usuários ainda não implementados
             'menus_permitidos' => ['todos'],

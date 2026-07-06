@@ -84,11 +84,14 @@ class FranquiaCadastroController extends Controller
         $franquiaId = $this->tokenContextId($request);
 
         $validated = $request->validate([
-            'nome'      => 'required|string|max:255',
-            'cnpj'      => 'nullable|string|max:18',
-            'email'     => 'nullable|email|max:255',
-            'telefone'  => 'nullable|string|max:20',
-            'categoria' => 'nullable|string|max:50',
+            'nome'       => 'required|string|max:255',
+            'cnpj'       => 'nullable|string|max:18',
+            'email'      => 'nullable|email|max:255',
+            'telefone'   => 'nullable|string|max:20',
+            'categoria'  => 'nullable|string|max:50',
+            'endereco'   => 'nullable|string|max:255',
+            'observacao' => 'nullable|string',
+            'ativo'      => 'nullable|boolean',
         ]);
 
         $fornecedor = FranquiaFornecedor::create(array_merge($validated, ['franquia_id' => $franquiaId]));
@@ -104,11 +107,14 @@ class FranquiaCadastroController extends Controller
         $fornecedor = FranquiaFornecedor::where('franquia_id', $franquiaId)->findOrFail($id);
 
         $validated = $request->validate([
-            'nome'      => 'sometimes|required|string|max:255',
-            'cnpj'      => 'nullable|string|max:18',
-            'email'     => 'nullable|email|max:255',
-            'telefone'  => 'nullable|string|max:20',
-            'categoria' => 'nullable|string|max:50',
+            'nome'       => 'sometimes|required|string|max:255',
+            'cnpj'       => 'nullable|string|max:18',
+            'email'      => 'nullable|email|max:255',
+            'telefone'   => 'nullable|string|max:20',
+            'categoria'  => 'nullable|string|max:50',
+            'endereco'   => 'nullable|string|max:255',
+            'observacao' => 'nullable|string',
+            'ativo'      => 'nullable|boolean',
         ]);
 
         $fornecedor->update($validated);

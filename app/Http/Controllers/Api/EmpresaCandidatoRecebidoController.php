@@ -190,7 +190,10 @@ class EmpresaCandidatoRecebidoController extends Controller
     {
         $empresaId = $this->tokenContextId($request);
 
-        $candidatos = \App\Models\Candidato::with('user:id,name')
+        $candidatos = \App\Models\Candidato::with(['user:id,name', 'envios' => function ($q) use ($empresaId) {
+                $q->whereHas('vaga', fn($sub) => $sub->where('empresa_id', $empresaId))
+                    ->orderByDesc('created_at');
+            }])
             ->whereHas('envios.vaga', fn($q) => $q->where('empresa_id', $empresaId))
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
@@ -202,6 +205,7 @@ class EmpresaCandidatoRecebidoController extends Controller
                 'cidade'         => $c->cidade,
                 'estado'         => $c->estado,
                 'telefone'       => $c->telefone,
+                'origem'         => $c->envios->first()?->origem,
                 'latitude'       => (float) $c->latitude,
                 'longitude'      => (float) $c->longitude,
             ]);
@@ -213,12 +217,14 @@ class EmpresaCandidatoRecebidoController extends Controller
 
     private function baseQuery(int $empresaId)
     {
-        return Envio::with(['candidato.user:id,name,email', 'vaga:id,titulo,salario_min,salario_max', 'kanbanEtapa:id,nome'])
+        return Envio::with(['candidato.user:id,name,email', 'vaga:id,titulo,salario_min,salario_max', 'kanbanEtapa:id,nome', 'pareceres'])
             ->whereHas('vaga', fn($q) => $q->where('empresa_id', $empresaId));
     }
 
     private function payload(Envio $e): array
     {
+        $parecer = $e->relationLoaded('pareceres') ? $e->pareceres->sortByDesc('created_at')->first() : null;
+
         return [
             'id'                => $e->id,
             'curriculo_id'      => $e->curriculo_id,
@@ -227,6 +233,9 @@ class EmpresaCandidatoRecebidoController extends Controller
             'kanban_etapa_nome' => $e->kanbanEtapa?->nome ?? 'Recebido',
             'origem'            => $e->origem,
             'status'            => $e->status_empresa,
+            'parecer_id'        => $parecer?->id,
+            'parecer_texto'     => $parecer?->texto,
+            'parecer_autor'     => $parecer?->autor,
             'observacao'        => $e->observacao,
             'salario_aprovado'  => $e->salario_aprovado,
             'data_admissao'     => $e->data_admissao?->toDateString(),

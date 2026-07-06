@@ -115,6 +115,8 @@ class FranquiaVagaController extends Controller
             'estado'           => 'nullable|string|size:2',
             'bairro'           => 'nullable|string|max:100',
             'cep'              => 'nullable|string|max:10',
+            'logradouro'       => 'nullable|string|max:255',
+            'numero'           => 'nullable|string|max:20',
             'modalidade'       => 'nullable|in:presencial,remoto,hibrido',
             'tipo_contrato'    => 'nullable|in:clt,pj,temporario,estagio,autonomo',
             'salario_min'      => 'nullable|numeric|min:0',
@@ -125,6 +127,15 @@ class FranquiaVagaController extends Controller
             'nivel_vaga_id'    => 'nullable|integer|exists:niveis_vagas,id',
             'taxa_servico'     => 'nullable|numeric|min:0|max:100',
             'requer_validacao_premium' => 'nullable|boolean',
+            'genero'            => 'nullable|string|max:20',
+            'turno'             => 'nullable|string|max:20',
+            'horario_trabalho'  => 'nullable|string|max:50',
+            'nome_requisitante' => 'nullable|string|max:255',
+            'email_requisitante'=> 'nullable|email|max:255',
+            'beneficio_ids'      => 'nullable|array',
+            'beneficio_ids.*'    => 'integer|exists:beneficios_catalogo,id',
+            'franquia_ids'       => 'nullable|array',
+            'franquia_ids.*'     => 'integer|exists:franquias,id',
         ]);
 
         // Valida que a empresa pertence a esta franquia
@@ -143,8 +154,12 @@ class FranquiaVagaController extends Controller
             'estado'          => $validated['estado'] ?? null,
             'bairro'          => $validated['bairro'] ?? null,
             'cep'             => $validated['cep'] ?? null,
-            'regime_trabalho' => $validated['modalidade'] ?? null,
-            'tipo_contrato'   => $validated['tipo_contrato'] ?? null,
+            'logradouro'      => $validated['logradouro'] ?? null,
+            'numero'          => $validated['numero'] ?? null,
+            // regime_trabalho/tipo_contrato não são mais escolhidos no formulário;
+            // colunas são NOT NULL no banco, então usamos os mesmos defaults do schema.
+            'regime_trabalho' => $validated['modalidade'] ?? 'presencial',
+            'tipo_contrato'   => $validated['tipo_contrato'] ?? 'clt',
             'salario_min'     => $validated['salario_min'] ?? null,
             'salario_max'     => $validated['salario_max'] ?? null,
             'exibir_salario'  => !($validated['salario_oculto'] ?? false),
@@ -153,9 +168,22 @@ class FranquiaVagaController extends Controller
             'nivel_vaga_id'   => $validated['nivel_vaga_id'] ?? null,
             'taxa_servico'    => $validated['taxa_servico'] ?? null,
             'requer_validacao_premium' => $request->boolean('requer_validacao_premium'),
+            'genero'             => $validated['genero'] ?? null,
+            'turno'              => $validated['turno'] ?? null,
+            'horario_trabalho'   => $validated['horario_trabalho'] ?? null,
+            'nome_requisitante'  => $validated['nome_requisitante'] ?? null,
+            'email_requisitante' => $validated['email_requisitante'] ?? null,
             'status'          => 'publicada',
             'data_abertura'   => now(),
         ]);
+
+        if (!empty($validated['beneficio_ids'])) {
+            $vaga->beneficiosCatalogo()->sync($validated['beneficio_ids']);
+        }
+
+        if (!empty($validated['franquia_ids'])) {
+            $vaga->franquiasCompartilhadas()->sync($validated['franquia_ids']);
+        }
 
         return response()->json([
             'message' => 'Vaga criada com sucesso.',
@@ -174,6 +202,19 @@ class FranquiaVagaController extends Controller
         return 'VG-' . str_pad($numero, 4, '0', STR_PAD_LEFT);
     }
 
+    // GET /franquia/vagas/franquias
+    public function franquiasDisponiveis(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+
+        $franquias = Franquia::where('active', true)
+            ->where('id', '!=', $franquiaId)
+            ->orderBy('nome')
+            ->get(['id', 'codigo', 'nome']);
+
+        return response()->json(['data' => $franquias]);
+    }
+
     // GET /franquia/vagas/niveis
     public function niveis(Request $request)
     {
@@ -186,7 +227,7 @@ class FranquiaVagaController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
-        $vaga = Vaga::with(['empresa:id,razao_social,nome_fantasia,cidade', 'documentos'])
+        $vaga = Vaga::with(['empresa:id,razao_social,nome_fantasia,cidade', 'documentos', 'beneficiosCatalogo'])
             ->where(function ($q) use ($franquiaId) {
                 $q->where('franquia_id', $franquiaId)
                   ->orWhereHas('franquiasCompartilhadas', function ($sub) use ($franquiaId) {
@@ -206,6 +247,8 @@ class FranquiaVagaController extends Controller
             'estado'            => $vaga->estado,
             'bairro'            => $vaga->bairro,
             'cep'               => $vaga->cep,
+            'logradouro'        => $vaga->logradouro,
+            'numero'            => $vaga->numero,
             'nivel_vaga_id'     => $vaga->nivel_vaga_id,
             'taxa_servico'      => $vaga->taxa_servico,
             'modalidade'        => $vaga->regime_trabalho,
@@ -221,6 +264,13 @@ class FranquiaVagaController extends Controller
             'created_at'        => $vaga->created_at,
             'is_shared'         => $vaga->franquia_id !== $franquiaId,
             'documentos'        => $vaga->documentos,
+            'genero'             => $vaga->genero,
+            'turno'              => $vaga->turno,
+            'horario_trabalho'   => $vaga->horario_trabalho,
+            'nome_requisitante'  => $vaga->nome_requisitante,
+            'email_requisitante' => $vaga->email_requisitante,
+            'beneficio_ids'      => $vaga->beneficiosCatalogo->pluck('id'),
+            'beneficios_selecionados' => $vaga->beneficiosCatalogo,
         ]]);
     }
 
@@ -242,6 +292,8 @@ class FranquiaVagaController extends Controller
             'estado'            => 'nullable|string|size:2',
             'bairro'            => 'nullable|string|max:100',
             'cep'               => 'nullable|string|max:10',
+            'logradouro'        => 'nullable|string|max:255',
+            'numero'            => 'nullable|string|max:20',
             'modalidade'        => 'nullable|in:presencial,remoto,hibrido',
             'tipo_contrato'     => 'nullable|in:clt,pj,temporario,estagio,autonomo',
             'salario_min'       => 'nullable|numeric|min:0',
@@ -251,7 +303,17 @@ class FranquiaVagaController extends Controller
             'expira_em'         => 'nullable|date',
             'taxa_servico'      => 'nullable|numeric|min:0|max:100',
             'requer_validacao_premium' => 'nullable|boolean',
+            'genero'            => 'nullable|string|max:20',
+            'turno'             => 'nullable|string|max:20',
+            'horario_trabalho'  => 'nullable|string|max:50',
+            'nome_requisitante' => 'nullable|string|max:255',
+            'email_requisitante'=> 'nullable|email|max:255',
+            'beneficio_ids'      => 'nullable|array',
+            'beneficio_ids.*'    => 'integer|exists:beneficios_catalogo,id',
         ]);
+
+        $beneficioIds = $validated['beneficio_ids'] ?? null;
+        unset($validated['beneficio_ids']);
 
         $data = [];
         foreach ($validated as $key => $val) {
@@ -265,6 +327,10 @@ class FranquiaVagaController extends Controller
         }
 
         $vaga->update($data);
+
+        if ($beneficioIds !== null) {
+            $vaga->beneficiosCatalogo()->sync($beneficioIds);
+        }
 
         return response()->json(['message' => 'Vaga updated successfully.', 'data' => $vaga->fresh()]);
     }
@@ -307,6 +373,12 @@ class FranquiaVagaController extends Controller
         $request->validate(['candidato_id' => 'required|integer|exists:candidatos,id']);
 
         $candidato = Candidato::findOrFail($request->candidato_id);
+
+        if (!$candidato->pareceres()->exists()) {
+            return response()->json([
+                'message' => 'Candidato precisa ter um parecer registrado antes de ser vinculado a uma vaga.',
+            ], 422);
+        }
 
         // Usa o currículo ativo do candidato
         $curriculo = $candidato->documentos()->where('ativo', true)->first()
