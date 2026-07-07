@@ -31,20 +31,20 @@ class FranquiaMapaController extends Controller
         ];
 
         if (in_array($tipo, ['vagas', 'todos'])) {
-            $data['vagas'] = Vaga::with('empresa:id,razao_social,nome_fantasia')
+            // A vaga não tem coordenadas próprias; usa a localização da empresa.
+            $data['vagas'] = Vaga::with('empresa:id,razao_social,nome_fantasia,latitude,longitude')
                 ->whereIn('empresa_id', $empresaIds)
                 ->where('status', 'publicada')
-                ->whereNotNull('latitude')
-                ->whereNotNull('longitude')
-                ->get(['id', 'empresa_id', 'titulo', 'cidade', 'estado', 'latitude', 'longitude', 'regime_trabalho'])
+                ->whereHas('empresa', fn($q) => $q->whereNotNull('latitude')->whereNotNull('longitude'))
+                ->get(['id', 'empresa_id', 'titulo', 'cidade', 'estado', 'regime_trabalho'])
                 ->map(fn($v) => [
                     'id'         => $v->id,
                     'titulo'     => $v->titulo,
                     'empresa'    => $v->empresa?->nome_fantasia ?? $v->empresa?->razao_social,
                     'cidade'     => $v->cidade,
                     'estado'     => $v->estado,
-                    'latitude'   => $v->latitude,
-                    'longitude'  => $v->longitude,
+                    'latitude'   => $v->empresa?->latitude,
+                    'longitude'  => $v->empresa?->longitude,
                     'modalidade' => $v->regime_trabalho,
                 ]);
         }
