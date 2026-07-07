@@ -93,7 +93,7 @@ class EmpresaCandidatoRecebidoController extends Controller
         $empresaId = $this->tokenContextId($request);
 
         $data = $request->validate([
-            'status'           => 'required|in:pendente,aprovado,reprovado,desistiu,reposicao',
+            'status'           => 'required|in:pendente,em_processo,aprovado,reprovado,desistiu,reposicao',
             'observacao'       => 'nullable|string',
             'salario_aprovado' => 'nullable|numeric|min:0',
             'data_admissao'    => 'nullable|date',
@@ -110,9 +110,10 @@ class EmpresaCandidatoRecebidoController extends Controller
             'data_saida'       => $data['data_saida'] ?? $envio->data_saida,
             // reflete no status que o candidato enxerga
             'status'           => match ($data['status']) {
-                'aprovado'  => 'aprovado',
-                'reprovado' => 'reprovado',
-                default     => $envio->status,
+                'aprovado'    => 'aprovado',
+                'reprovado'   => 'reprovado',
+                'em_processo' => 'em_processo',
+                default       => $envio->status,
             },
         ]);
 
@@ -217,7 +218,7 @@ class EmpresaCandidatoRecebidoController extends Controller
 
     private function baseQuery(int $empresaId)
     {
-        return Envio::with(['candidato.user:id,name,email', 'vaga:id,titulo,salario_min,salario_max', 'kanbanEtapa:id,nome', 'pareceres'])
+        return Envio::with(['candidato.user:id,name,email', 'candidato.franquia:id,nome', 'vaga:id,titulo,salario_min,salario_max', 'kanbanEtapa:id,nome', 'pareceres'])
             ->whereHas('vaga', fn($q) => $q->where('empresa_id', $empresaId));
     }
 
@@ -232,6 +233,7 @@ class EmpresaCandidatoRecebidoController extends Controller
             'kanban_etapa_id'   => $e->kanban_etapa_id,
             'kanban_etapa_nome' => $e->kanbanEtapa?->nome ?? 'Recebido',
             'origem'            => $e->origem,
+            'franquia_nome'     => $e->candidato?->franquia?->nome,
             'status'            => $e->status_empresa,
             'parecer_id'        => $parecer?->id,
             'parecer_texto'     => $parecer?->texto,

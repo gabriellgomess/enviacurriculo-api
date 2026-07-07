@@ -520,6 +520,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Relatórios
         Route::get('relatorios', [FranquiaRelatorioController::class, 'index']);
+        Route::get('relatorios-gerenciais/{tipo}', [\App\Http\Controllers\Api\FranquiaRelatorioGerencialController::class, 'show']);
 
         // Vagas
         Route::get('vagas',                              [FranquiaVagaController::class, 'index']);
@@ -556,11 +557,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('candidatos/{id}/pareceres',          [FranquiaCandidatoController::class, 'pareceresCandidato']);
         Route::post('candidatos/{id}/parecer',           [FranquiaCandidatoController::class, 'storeParecer']);
         Route::get('candidatos/{id}/disc',               [FranquiaCandidatoController::class, 'disc']);
+        Route::post('candidatos/{id}/disc',              [FranquiaCandidatoController::class, 'discStore']);
         Route::patch('candidatos/{candidatoId}/vagas/{vagaId}/status', [FranquiaCandidatoController::class, 'updateStatus']);
 
         // Empresas (módulo premium)
         Route::get('empresas',                           [FranquiaEmpresaGestaoController::class, 'index']);
         Route::post('empresas',                          [FranquiaEmpresaGestaoController::class, 'store']);
+        Route::get('empresas/relatorios',                [FranquiaEmpresaGestaoController::class, 'relatorios']);
         Route::get('empresas/{id}',                      [FranquiaEmpresaGestaoController::class, 'show']);
         Route::put('empresas/{id}',                      [FranquiaEmpresaGestaoController::class, 'update']);
         Route::patch('empresas/{id}/toggle-active',      [FranquiaEmpresaGestaoController::class, 'toggleActive']);

@@ -115,6 +115,7 @@ class RegisterCandidatoController extends Controller
             'arquivo_path' => $path,
             'arquivo_nome' => $file->getClientOriginalName(),
             'tamanho_kb'   => (int) round($file->getSize() / 1024),
+            'ativo'        => true,
         ]);
     }
 }

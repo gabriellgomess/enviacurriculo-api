@@ -26,6 +26,28 @@ class FranquiaVagaController extends Controller
         }
     }
 
+    /**
+     * Executa uma query de Vaga já filtrada por acesso (dono, ou dono+compartilhada
+     * conforme o caso) e retorna o registro. Se não encontrar nada, diferencia:
+     * - a vaga não existe de fato               -> 404 "Vaga não encontrada."
+     * - a vaga existe mas não pertence a você    -> 403 (mensagem explicativa)
+     * Sem isso, os dois casos ficavam indistinguíveis pro usuário (ambos apareciam
+     * como "Recurso não encontrado.", sem explicar que a vaga é de outra franquia).
+     */
+    private function vagaOuAbortar(\Illuminate\Database\Eloquent\Builder $query, int $id): Vaga
+    {
+        $vaga = $query->find($id);
+        if ($vaga) {
+            return $vaga;
+        }
+        if (!Vaga::whereKey($id)->exists()) {
+            abort(response()->json(['message' => 'Vaga não encontrada.'], 404));
+        }
+        abort(response()->json([
+            'message' => 'Esta vaga pertence a outra franquia e não está disponível para você.',
+        ], 403));
+    }
+
     // GET /franquia/vagas
     public function index(Request $request)
     {
@@ -227,15 +249,17 @@ class FranquiaVagaController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
-        $vaga = Vaga::with(['empresa:id,razao_social,nome_fantasia,cidade', 'documentos', 'beneficiosCatalogo'])
-            ->where(function ($q) use ($franquiaId) {
-                $q->where('franquia_id', $franquiaId)
-                  ->orWhereHas('franquiasCompartilhadas', function ($sub) use ($franquiaId) {
-                      $sub->where('franquias.id', $franquiaId);
-                  });
-            })
-            ->withCount('envios as total_candidatos')
-            ->findOrFail($id);
+        $vaga = $this->vagaOuAbortar(
+            Vaga::with(['empresa:id,razao_social,nome_fantasia,cidade', 'documentos', 'beneficiosCatalogo'])
+                ->where(function ($q) use ($franquiaId) {
+                    $q->where('franquia_id', $franquiaId)
+                      ->orWhereHas('franquiasCompartilhadas', function ($sub) use ($franquiaId) {
+                          $sub->where('franquias.id', $franquiaId);
+                      });
+                })
+                ->withCount('envios as total_candidatos'),
+            $id
+        );
 
         return response()->json(['data' => [
             'id'                => $vaga->id,
@@ -279,7 +303,7 @@ class FranquiaVagaController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
-        $vaga = Vaga::where('franquia_id', $franquiaId)->findOrFail($id);
+        $vaga = $this->vagaOuAbortar(Vaga::where('franquia_id', $franquiaId), $id);
 
         $validated = $request->validate([
             'titulo'            => 'sometimes|required|string|max:255',
@@ -339,7 +363,7 @@ class FranquiaVagaController extends Controller
     public function destroy(Request $request, int $id)
     {
         $franquiaId = $this->tokenContextId($request);
-        $vaga = Vaga::where('franquia_id', $franquiaId)->findOrFail($id);
+        $vaga = $this->vagaOuAbortar(Vaga::where('franquia_id', $franquiaId), $id);
         $vaga->delete();
 
         return response()->json(['message' => 'Vaga removida.']);
@@ -350,7 +374,7 @@ class FranquiaVagaController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
         $this->assertPremium($franquiaId, 'Apenas franquias Premium podem alterar o status da vaga.');
-        $vaga = Vaga::where('franquia_id', $franquiaId)->findOrFail($id);
+        $vaga = $this->vagaOuAbortar(Vaga::where('franquia_id', $franquiaId), $id);
 
         $novoStatus = $vaga->status === 'publicada' ? 'rascunho' : 'publicada';
         $vaga->update(['status' => $novoStatus]);
@@ -363,12 +387,12 @@ class FranquiaVagaController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
-        $vaga = Vaga::where(function ($q) use ($franquiaId) {
+        $vaga = $this->vagaOuAbortar(Vaga::where(function ($q) use ($franquiaId) {
             $q->where('franquia_id', $franquiaId)
               ->orWhereHas('franquiasCompartilhadas', function ($sub) use ($franquiaId) {
                   $sub->where('franquias.id', $franquiaId);
               });
-        })->findOrFail($vagaId);
+        }), $vagaId);
 
         $request->validate(['candidato_id' => 'required|integer|exists:candidatos,id']);
 
@@ -400,12 +424,12 @@ class FranquiaVagaController extends Controller
     public function candidatos(Request $request, int $vagaId)
     {
         $franquiaId = $this->tokenContextId($request);
-        $vaga = Vaga::where(function ($q) use ($franquiaId) {
+        $vaga = $this->vagaOuAbortar(Vaga::where(function ($q) use ($franquiaId) {
             $q->where('franquia_id', $franquiaId)
               ->orWhereHas('franquiasCompartilhadas', function ($sub) use ($franquiaId) {
                   $sub->where('franquias.id', $franquiaId);
               });
-        })->findOrFail($vagaId);
+        }), $vagaId);
 
         $envios = Envio::with('candidato.user:id,name')
             ->where('vaga_id', $vaga->id)
@@ -429,7 +453,7 @@ class FranquiaVagaController extends Controller
     public function storeDocumento(Request $request, int $id)
     {
         $franquiaId = $this->tokenContextId($request);
-        $vaga = Vaga::where('franquia_id', $franquiaId)->findOrFail($id);
+        $vaga = $this->vagaOuAbortar(Vaga::where('franquia_id', $franquiaId), $id);
 
         $request->validate([
             'documento' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
@@ -456,7 +480,7 @@ class FranquiaVagaController extends Controller
     public function destroyDocumento(Request $request, int $vagaId, int $docId)
     {
         $franquiaId = $this->tokenContextId($request);
-        $vaga = Vaga::where('franquia_id', $franquiaId)->findOrFail($vagaId);
+        $vaga = $this->vagaOuAbortar(Vaga::where('franquia_id', $franquiaId), $vagaId);
         $doc = VagaDocumento::where('vaga_id', $vaga->id)->findOrFail($docId);
 
         $oldPath = str_replace(Storage::disk('public')->url(''), '', $doc->arquivo_path);
@@ -471,7 +495,7 @@ class FranquiaVagaController extends Controller
     public function listCompartilhadas(Request $request, int $id)
     {
         $franquiaId = $this->tokenContextId($request);
-        $vaga = Vaga::where('franquia_id', $franquiaId)->findOrFail($id);
+        $vaga = $this->vagaOuAbortar(Vaga::where('franquia_id', $franquiaId), $id);
 
         $sharedIds = $vaga->franquiasCompartilhadas()->pluck('franquias.id')->toArray();
         $franquias = Franquia::where('active', true)
@@ -492,7 +516,7 @@ class FranquiaVagaController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
         $this->assertPremium($franquiaId, 'Apenas franquias Premium podem convidar franquias.');
-        $vaga = Vaga::where('franquia_id', $franquiaId)->findOrFail($id);
+        $vaga = $this->vagaOuAbortar(Vaga::where('franquia_id', $franquiaId), $id);
 
         $request->validate([
             'franquia_ids'   => 'required|array',
