@@ -82,7 +82,7 @@ class MigrateCandidates extends Command
                         'franquia_id'              => $oldCand->franchise_id, // Valide os IDs de Franquia previamente
                         'telefone'                 => $oldCand->phone ?? $oldUser->phone,
                         'nascimento'               => $oldCand->birth_date,
-                        'cep'                      => $oldCand->cep ?? $oldCurr->cep ?? null,
+                        'cep'                      => $this->mapCep($oldCand->cep ?? $oldCurr->cep ?? null),
                         'rua'                      => $oldCand->street ?? $oldCurr->street ?? null,
                         'numero'                   => $oldCand->number ?? $oldCurr->number ?? null,
                         'complemento'              => $oldCand->complement ?? $oldCurr->complement ?? null,
@@ -189,5 +189,15 @@ class MigrateCandidates extends Command
         }
         
         return substr($state, 0, 2);
+    }
+
+    private function mapCep(?string $cep): ?string
+    {
+        if (empty($cep)) return null;
+        $clean = preg_replace('/\D/', '', $cep);
+        if (strlen($clean) === 8) {
+            return substr($clean, 0, 5) . '-' . substr($clean, 5);
+        }
+        return substr($clean, 0, 9);
     }
 }
