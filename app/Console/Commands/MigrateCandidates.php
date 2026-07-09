@@ -75,6 +75,13 @@ class MigrateCandidates extends Command
                     ->where('id_person', 'candidate_' . $oldCand->id)
                     ->first();
 
+                if (!$oldCurr && !empty($oldCand->email)) {
+                    $oldCurr = DB::connection('mysql_antigo')
+                        ->table('ec_curriculos')
+                        ->where('person_email', $oldCand->email)
+                        ->first();
+                }
+
                 // 5. Criar Candidato no novo sistema
                 $candidato = Candidato::updateOrCreate(
                     ['user_id' => $user->id],
@@ -113,7 +120,7 @@ class MigrateCandidates extends Command
 
                     // Se o caminho físico foi passado por parâmetro, copiar o arquivo real
                     if ($oldStoragePath) {
-                        $fullOldPath = rtrim($oldStoragePath, '/') . "/Person/candidate_{$oldCand->id}/Curriculum/" . basename($oldCurr->file_path);
+                        $fullOldPath = rtrim($oldStoragePath, '/') . '/' . ltrim($oldCurr->file_path, '/');
                         if (file_exists($fullOldPath)) {
                             Storage::disk('public')->put($newPath, file_get_contents($fullOldPath));
                         }
