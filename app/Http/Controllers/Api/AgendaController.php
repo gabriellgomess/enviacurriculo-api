@@ -72,8 +72,19 @@ class AgendaController extends Controller
         $user = $request->user();
         $items = [];
 
+        // Resolve active role from Sanctum token abilities
+        $role = null;
+        $token = $user->currentAccessToken();
+        if ($token) {
+            $roleAbility = collect($token->abilities ?? [])
+                ->first(fn($a) => str_starts_with($a, 'role:'));
+            if ($roleAbility) {
+                $role = substr($roleAbility, 5);
+            }
+        }
+
         // 1. If admin, load franchise birthdays and partnership anniversaries
-        if ($user->role === 'admin') {
+        if ($role === 'admin') {
             $franquias = Franquia::where('active', true)->get();
             foreach ($franquias as $f) {
                 if ($f->data_nascimento) {
@@ -107,7 +118,7 @@ class AgendaController extends Controller
         $query = EmpresaColaborador::with('empresa:id,nome_fantasia')
             ->where('status', 'ativo');
 
-        if ($user->role === 'empresa') {
+        if ($role === 'empresa') {
             // Find company id
             $empresa = Empresa::where('user_id', $user->id)->first();
             if (!$empresa) {
@@ -115,7 +126,7 @@ class AgendaController extends Controller
             }
             $query->where('empresa_id', $empresa->id);
 
-        } elseif ($user->role === 'franqueado' || $user->role === 'franquia') {
+        } elseif ($role === 'franqueado' || $role === 'franquia') {
             // Find franchise id
             $franquia = Franquia::where('user_id', $user->id)->first();
             if (!$franquia) {
