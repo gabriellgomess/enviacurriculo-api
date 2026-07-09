@@ -158,7 +158,7 @@ class CandidatoController extends Controller
     public function show(Candidato $candidato)
     {
         return response()->json(
-            $candidato->load(['user:id,name,email,phone,active', 'documentos'])
+            $candidato->load(['user:id,name,email,phone,active', 'documentos', 'franquia:id,nome'])
         );
     }
 
@@ -242,5 +242,173 @@ class CandidatoController extends Controller
         }
 
         return Storage::disk('public')->download($documento->arquivo_path, $documento->arquivo_nome);
+    }
+
+    public function pareceres(Request $request, int $id)
+    {
+        $pareceres = \App\Models\CandidatoParecer::with(['criador:id,name', 'franquia:id,nome'])
+            ->where('candidato_id', $id)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($p) {
+                return [
+                    'id'                => $p->id,
+                    'parecer'           => $p->texto,
+                    'nota'              => $p->nota,
+                    'criado_por_nome'   => $p->criador?->name ?? 'Sistema',
+                    'franquia_nome'     => $p->franquia?->nome ?? 'Administração',
+                    'created_at'        => $p->created_at,
+                ];
+            });
+
+        return response()->json(['data' => $pareceres]);
+    }
+
+    public function storeParecer(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'texto' => 'required|string|max:5000',
+            'nota'  => 'nullable|integer|min:1|max:5',
+        ]);
+
+        $parecer = \App\Models\CandidatoParecer::create([
+            'candidato_id' => $id,
+            'criado_por'   => $request->user()->id,
+            'texto'        => $validated['texto'],
+            'nota'         => $validated['nota'] ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Parecer registrado.',
+            'data'    => $parecer,
+        ], 201);
+    }
+
+    public function updateParecer(Request $request, int $id)
+    {
+        $parecer = \App\Models\CandidatoParecer::findOrFail($id);
+
+        $validated = $request->validate([
+            'texto' => 'required|string|max:5000',
+            'nota'  => 'nullable|integer|min:1|max:5',
+        ]);
+
+        $parecer->update([
+            'texto' => $validated['texto'],
+            'nota'  => $validated['nota'] ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Parecer atualizado com sucesso.',
+            'data'    => $parecer,
+        ]);
+    }
+
+    public function destroyParecer(Request $request, int $id)
+    {
+        $parecer = \App\Models\CandidatoParecer::findOrFail($id);
+        $parecer->delete();
+
+        return response()->json([
+            'message' => 'Parecer excluído com sucesso.',
+        ]);
+    }
+
+    public function vincular(Request $request, Candidato $candidato)
+    {
+        $request->validate([
+            'vagas_ids' => 'required|array',
+            'vagas_ids.*' => 'integer|exists:vagas,id',
+        ]);
+
+        if (!$candidato->pareceres()->exists()) {
+            return response()->json([
+                'message' => 'Candidato precisa ter um parecer registrado antes de ser vinculado a uma vaga.',
+            ], 422);
+        }
+
+        $curriculo = $candidato->documentos()->where('ativo', true)->first()
+            ?? $candidato->documentos()->latest()->first();
+
+        $vinculados = [];
+        foreach ($request->vagas_ids as $vagaId) {
+            $envio = \App\Models\Envio::firstOrCreate(
+                ['candidato_id' => $candidato->id, 'vaga_id' => $vagaId],
+                ['curriculo_id' => $curriculo?->id, 'status' => 'enviado']
+            );
+            $vinculados[] = $vagaId;
+        }
+
+        return response()->json([
+            'message' => 'Candidato vinculado com sucesso.',
+            'data'    => $vinculados,
+        ]);
+    }
+
+    public function vinculacoes(Request $request, Candidato $candidato)
+    {
+        $envios = \App\Models\Envio::with(['vaga:id,titulo,empresa_id', 'vaga.empresa:id,nome_fantasia,razao_social'])
+            ->where('candidato_id', $candidato->id)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($envio) {
+                return [
+                    'id' => $envio->id,
+                    'vaga_nome' => $envio->vaga?->titulo ?? 'Vaga Desconhecida',
+                    'empresa_nome' => $envio->vaga?->empresa?->nome_fantasia ?? $envio->vaga?->empresa?->razao_social ?? 'Empresa Desconhecida',
+                    'status' => $envio->status,
+                    'created_at' => $envio->created_at,
+                ];
+            });
+
+        return response()->json(['data' => $envios]);
+    }
+
+    public function disc(Request $request, int $id)
+    {
+        $disc = \App\Models\CandidatoDisc::where('candidato_id', $id)
+            ->with('aplicador:id,name')
+            ->latest()
+            ->first();
+
+        if (!$disc) {
+            return response()->json(['data' => null]);
+        }
+
+        return response()->json(['data' => [
+            'perfil_dominante'  => $disc->perfil_dominante,
+            'score_d'           => $disc->score_d,
+            'score_i'           => $disc->score_i,
+            'score_s'           => $disc->score_s,
+            'score_c'           => $disc->score_c,
+            'aplicado_por_nome' => $disc->aplicador?->name,
+            'created_at'        => $disc->created_at,
+        ]]);
+    }
+
+    public function storeDisc(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'perfil_dominante' => 'required|string|in:D,I,S,C',
+            'score_d'          => 'required|integer|min:0|max:100',
+            'score_i'          => 'required|integer|min:0|max:100',
+            'score_s'          => 'required|integer|min:0|max:100',
+            'score_c'          => 'required|integer|min:0|max:100',
+        ]);
+
+        $disc = \App\Models\CandidatoDisc::create([
+            'candidato_id'     => $id,
+            'aplicado_por'     => $request->user()->id,
+            'perfil_dominante' => $validated['perfil_dominante'],
+            'score_d'          => $validated['score_d'],
+            'score_i'          => $validated['score_i'],
+            'score_s'          => $validated['score_s'],
+            'score_c'          => $validated['score_c'],
+        ]);
+
+        return response()->json([
+            'message' => 'Resultado do teste DISC registrado com sucesso.',
+            'data'    => $disc
+        ], 201);
     }
 }

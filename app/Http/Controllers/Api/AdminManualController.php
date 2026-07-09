@@ -58,4 +58,37 @@ class AdminManualController extends Controller
 
         return response()->json(['message' => 'Status alterado.', 'data' => $manual]);
     }
+
+    // PUT /api/admin/manuais/{id}
+    public function update(Request $request, int $id)
+    {
+        $manual = FranquiaManual::findOrFail($id);
+        
+        $request->validate([
+            'titulo'  => 'required|string|max:255',
+            'arquivo' => 'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,zip',
+        ]);
+
+        $data = [
+            'titulo' => $request->titulo,
+        ];
+
+        if ($request->hasFile('arquivo')) {
+            // Delete old file
+            Storage::disk('public')->delete($manual->arquivo_path);
+            
+            // Store new file
+            $file = $request->file('arquivo');
+            $path = $file->store('manuais', 'public');
+            $tamanho = (int) ceil($file->getSize() / 1024);
+
+            $data['arquivo_path'] = $path;
+            $data['arquivo_nome'] = $file->getClientOriginalName();
+            $data['tamanho_kb']   = $tamanho;
+        }
+
+        $manual->update($data);
+
+        return response()->json(['message' => 'Manual atualizado com sucesso.', 'data' => $manual]);
+    }
 }

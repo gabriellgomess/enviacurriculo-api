@@ -244,6 +244,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('candidatos', CandidatoController::class);
         Route::patch('candidatos/{candidato}/toggle-active', [CandidatoController::class, 'toggleActive']);
         Route::get('candidatos/{candidato}/documentos/{documento}/download', [CandidatoController::class, 'downloadDocumento']);
+        Route::get('candidatos/{id}/pareceres', [CandidatoController::class, 'pareceres']);
+        Route::post('candidatos/{id}/pareceres', [CandidatoController::class, 'storeParecer']);
+        Route::put('candidatos/pareceres/{id}', [CandidatoController::class, 'updateParecer']);
+        Route::delete('candidatos/pareceres/{id}', [CandidatoController::class, 'destroyParecer']);
+        Route::post('candidatos/{candidato}/vincular', [CandidatoController::class, 'vincular']);
+        Route::get('candidatos/{candidato}/vinculacoes', [CandidatoController::class, 'vinculacoes']);
+        Route::get('candidatos/{id}/disc', [CandidatoController::class, 'disc']);
+        Route::post('candidatos/{id}/disc', [CandidatoController::class, 'storeDisc']);
 
         // Financeiro — configurações por tipo de franquia
         // (mensalidade, tx_royalties, tx_marketing, percentual_comissao, percentual_imposto)
@@ -300,6 +308,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Biblioteca (Manuais)
         Route::get('manuais',                      [AdminManualController::class, 'index']);
         Route::post('manuais',                     [AdminManualController::class, 'store']);
+        Route::put('manuais/{id}',                 [AdminManualController::class, 'update']);
         Route::delete('manuais/{id}',              [AdminManualController::class, 'destroy']);
         Route::patch('manuais/{id}/toggle',        [AdminManualController::class, 'toggleActive']);
 

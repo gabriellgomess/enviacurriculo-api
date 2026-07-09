@@ -70,8 +70,40 @@ class AgendaController extends Controller
     public function aniversarios(Request $request)
     {
         $user = $request->user();
+        $items = [];
 
-        // 1. Determine active collaborators query based on user profile
+        // 1. If admin, load franchise birthdays and partnership anniversaries
+        if ($user->role === 'admin') {
+            $franquias = Franquia::where('active', true)->get();
+            foreach ($franquias as $f) {
+                if ($f->data_nascimento) {
+                    $nasc = Carbon::parse($f->data_nascimento);
+                    $anos = Carbon::now()->diffInYears($nasc);
+                    $items[] = [
+                        'nome' => $f->responsavel ?? $f->nome,
+                        'empresa' => $f->nome,
+                        'data' => $f->data_nascimento->format('Y-m-d'),
+                        'tipo' => 'nascimento_franqueado',
+                        'anos' => $anos,
+                    ];
+                }
+                if ($f->data_inicio_parceria) {
+                    $adm  = Carbon::parse($f->data_inicio_parceria);
+                    $anos = Carbon::now()->diffInYears($adm);
+                    if ($anos > 0) {
+                        $items[] = [
+                            'nome' => $f->responsavel ?? $f->nome,
+                            'empresa' => $f->nome,
+                            'data' => $f->data_inicio_parceria->format('Y-m-d'),
+                            'tipo' => 'parceria_franqueado',
+                            'anos' => $anos,
+                        ];
+                    }
+                }
+            }
+        }
+
+        // 2. Determine active collaborators query based on user profile
         $query = EmpresaColaborador::with('empresa:id,nome_fantasia')
             ->where('status', 'ativo');
 
@@ -79,7 +111,7 @@ class AgendaController extends Controller
             // Find company id
             $empresa = Empresa::where('user_id', $user->id)->first();
             if (!$empresa) {
-                return response()->json(['data' => []]);
+                return response()->json(['data' => $items]);
             }
             $query->where('empresa_id', $empresa->id);
 
@@ -87,7 +119,7 @@ class AgendaController extends Controller
             // Find franchise id
             $franquia = Franquia::where('user_id', $user->id)->first();
             if (!$franquia) {
-                return response()->json(['data' => []]);
+                return response()->json(['data' => $items]);
             }
             // Filter by companies belonging to this franchise
             $empresaIds = Empresa::where('franquia_id', $franquia->id)->pluck('id');
@@ -95,9 +127,7 @@ class AgendaController extends Controller
         }
 
         $colaboradores = $query->get();
-        $currentMonth  = Carbon::now()->month;
 
-        $items = [];
         foreach ($colaboradores as $c) {
             if ($c->data_nascimento) {
                 $nasc = Carbon::parse($c->data_nascimento);
