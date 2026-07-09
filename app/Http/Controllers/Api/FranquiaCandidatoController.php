@@ -12,6 +12,7 @@ use App\Models\Envio;
 use App\Models\EnvioParecer;
 use App\Models\User;
 use App\Models\Vaga;
+use App\Services\GeocodeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -20,6 +21,8 @@ use Illuminate\Support\Str;
 class FranquiaCandidatoController extends Controller
 {
     use HasTokenContext;
+
+    public function __construct(private readonly GeocodeService $geocoder) {}
 
     private function vagaIds(int $franquiaId): \Illuminate\Support\Collection
     {
@@ -177,6 +180,15 @@ class FranquiaCandidatoController extends Controller
             return $candidato;
         });
 
+        if ($candidato->cidade) {
+            $coords = $this->geocoder->geocode(
+                $candidato->rua, $candidato->numero, $candidato->bairro, $candidato->cidade, $candidato->estado
+            );
+            if ($coords) {
+                $candidato->update($coords);
+            }
+        }
+
         return response()->json([
             'message' => 'Currículo inserido com sucesso.',
             'data'    => ['id' => $candidato->id, 'nome' => $data['nome']],
@@ -225,7 +237,7 @@ class FranquiaCandidatoController extends Controller
         $vagaIds    = $this->vagaIds($franquiaId);
 
         $query = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)
-            ->with('user:id,name,email')
+            ->with(['user:id,name,email', 'franquia:id,nome'])
             ->withExists('pareceres as tem_parecer')
             ->where('active', true);
 
@@ -250,9 +262,14 @@ class FranquiaCandidatoController extends Controller
             'status'           => $c->active ? 'ativo' : 'inativo',
             'cpf'              => $c->cpf,
             'cargo_desejado'   => $c->cargo_desejado,
+            'cep'              => $c->cep,
+            'rua'              => $c->rua,
+            'numero'           => $c->numero,
+            'bairro'           => $c->bairro,
             'cidade'           => $c->cidade,
             'estado'           => $c->estado,
             'disponibilidade'  => $c->disponibilidade,
+            'franquia_responsavel' => $c->franquia?->nome,
             'curriculo_ativo'  => null, // carregado on-demand no show
             'ultimo_envio'     => $c->envios()->whereIn('vaga_id', $vagaIds)->latest()->value('created_at'),
             'tem_parecer'      => (bool) $c->tem_parecer,
@@ -419,6 +436,9 @@ class FranquiaCandidatoController extends Controller
         $candidato = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)->findOrFail($id);
 
         $validated = $request->validate([
+            'nome'                      => 'nullable|string|max:255',
+            'email'                     => ['nullable', 'email', 'max:255', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($candidato->user_id)],
+            'status'                    => 'nullable|in:ativo,inativo',
             'cargo_desejado'            => 'nullable|string|max:100',
             'telefone'                  => 'nullable|string|max:20',
             'cep'                       => 'nullable|string|max:9',
@@ -439,15 +459,46 @@ class FranquiaCandidatoController extends Controller
             'informacoes_adicionais'    => 'nullable|string',
         ]);
 
+        // 'nome' e 'email' pertencem ao User relacionado, nao ao Candidato
+        $nome  = $validated['nome'] ?? null;
+        $email = $validated['email'] ?? null;
+        unset($validated['nome'], $validated['email']);
+
+        // 'status' (ativo/inativo) e a coluna 'active' (boolean) traduzida
+        if (array_key_exists('status', $validated)) {
+            $validated['active'] = $validated['status'] === 'ativo';
+            unset($validated['status']);
+        }
+
         // a coluna real e 'apresentacao'; o form envia 'informacoes_pessoais'
         if (array_key_exists('informacoes_pessoais', $validated)) {
             $validated['apresentacao'] = $validated['informacoes_pessoais'];
             unset($validated['informacoes_pessoais']);
         }
 
+        // Re-geocoda se o endereço mudou, ou se o candidato ainda não tinha coordenadas
+        $enderecoMudou = !$candidato->latitude || collect(['rua', 'numero', 'bairro', 'cidade', 'estado'])
+            ->some(fn($f) => array_key_exists($f, $validated) && $validated[$f] !== $candidato->{$f});
+
         $candidato->update($validated);
 
-        return response()->json(['message' => 'Candidato atualizado.', 'data' => $candidato->fresh()]);
+        if (($nome !== null || $email !== null) && $candidato->user) {
+            $candidato->user->update(array_filter([
+                'name'  => $nome,
+                'email' => $email,
+            ], fn($v) => $v !== null));
+        }
+
+        if ($enderecoMudou && $candidato->cidade) {
+            $coords = $this->geocoder->geocode(
+                $candidato->rua, $candidato->numero, $candidato->bairro, $candidato->cidade, $candidato->estado
+            );
+            if ($coords) {
+                $candidato->update($coords);
+            }
+        }
+
+        return response()->json(['message' => 'Candidato atualizado.', 'data' => $candidato->fresh('user')]);
     }
 
     // POST /franquia/candidatos/{candidatoId}/vincular
@@ -659,6 +710,31 @@ class FranquiaCandidatoController extends Controller
             'aplicado_por_nome' => $disc->aplicador?->name,
             'created_at'        => $disc->created_at,
         ]]);
+    }
+
+    // POST /franquia/candidatos/{id}/disc
+    public function discStore(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $vagaIds    = $this->vagaIds($franquiaId);
+
+        $candidato = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)->findOrFail($id);
+
+        $validated = $request->validate([
+            'perfil_dominante' => 'required|string|in:D,I,S,C',
+            'score_d'          => 'required|integer|min:0|max:100',
+            'score_i'          => 'required|integer|min:0|max:100',
+            'score_s'          => 'required|integer|min:0|max:100',
+            'score_c'          => 'required|integer|min:0|max:100',
+            'respostas'        => 'nullable|array',
+        ]);
+
+        $disc = \App\Models\CandidatoDisc::create($validated + [
+            'candidato_id' => $candidato->id,
+            'aplicado_por' => $request->user()->id,
+        ]);
+
+        return response()->json(['message' => 'Teste DISC registrado.', 'data' => ['id' => $disc->id]], 201);
     }
 
     // PATCH /franquia/candidatos/{candidatoId}/vagas/{vagaId}/status

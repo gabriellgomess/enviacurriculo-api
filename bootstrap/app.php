@@ -29,6 +29,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $isApi = fn($request) => $request->is('api/*') || $request->expectsJson();
 
         // 404 — registro não encontrado via Eloquent (findOrFail, etc.)
+        //
+        // Nota: o handler base do Laravel já converte ModelNotFoundException em
+        // NotFoundHttpException (com a exceção original em getPrevious()) antes de
+        // qualquer render() customizado rodar — então este callback nunca é
+        // acionado. A distinção real acontece no handler de NotFoundHttpException
+        // abaixo, inspecionando getPrevious().
         $exceptions->render(function (
             \Illuminate\Database\Eloquent\ModelNotFoundException $e,
             $request
@@ -38,13 +44,18 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        // 404 — rota não encontrada
+        // 404 — rota não encontrada OU registro não encontrado via Eloquent
+        // (o Laravel converte ModelNotFoundException em NotFoundHttpException
+        // internamente antes de chegar aqui; getPrevious() preserva a exceção original)
         $exceptions->render(function (
             \Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e,
             $request
         ) use ($isApi) {
             if ($isApi($request)) {
-                return response()->json(['message' => 'Rota não encontrada.'], 404);
+                $message = $e->getPrevious() instanceof \Illuminate\Database\Eloquent\ModelNotFoundException
+                    ? 'Recurso não encontrado.'
+                    : 'Rota não encontrada.';
+                return response()->json(['message' => $message], 404);
             }
         });
 

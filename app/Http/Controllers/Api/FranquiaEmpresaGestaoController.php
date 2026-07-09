@@ -7,10 +7,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Empresa;
 use App\Models\EmpresaArquivo;
 use App\Models\EmpresaFollowup;
+use App\Models\Envio;
 use App\Models\Franquia;
 use App\Models\User;
 use App\Models\UserRole;
 use App\Models\UserContext;
+use App\Models\Vaga;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -28,12 +30,60 @@ class FranquiaEmpresaGestaoController extends Controller
         }
     }
 
+    // GET /franquia/empresas/relatorios
+    public function relatorios(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresas   = Empresa::where('franquia_id', $franquiaId)->get();
+        $empresaIds = $empresas->pluck('id');
+        $vagaIds    = Vaga::whereIn('empresa_id', $empresaIds)->pluck('id');
+
+        $mesesAbrev = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+        $meses = collect(range(5, 0))->map(fn($i) => now()->subMonths($i));
+
+        $candidatosPorMes = $meses->map(fn($m) => [
+            'mes'        => ucfirst($mesesAbrev[$m->month - 1]),
+            'candidatos' => Envio::whereIn('vaga_id', $vagaIds)
+                ->whereYear('created_at', $m->year)->whereMonth('created_at', $m->month)->count(),
+        ])->values();
+
+        $vagasPorMes = $meses->map(fn($m) => [
+            'mes'   => ucfirst($mesesAbrev[$m->month - 1]),
+            'vagas' => Vaga::whereIn('empresa_id', $empresaIds)
+                ->whereYear('created_at', $m->year)->whereMonth('created_at', $m->month)->count(),
+        ])->values();
+
+        $tabela = $empresas->map(function ($e) {
+            $vagaIdsEmpresa = Vaga::where('empresa_id', $e->id)->pluck('id');
+            return [
+                'nome'       => $e->razao_social,
+                'vagas'      => $vagaIdsEmpresa->count(),
+                'candidatos' => Envio::whereIn('vaga_id', $vagaIdsEmpresa)->count(),
+                'status'     => $e->active ? 'ativo' : 'inativo',
+            ];
+        })->values();
+
+        return response()->json(['data' => [
+            'kpis' => [
+                'total_empresas'        => $empresas->count(),
+                'empresas_ativas'       => $empresas->where('active', true)->count(),
+                'vagas_abertas'         => Vaga::whereIn('empresa_id', $empresaIds)->where('status', 'publicada')->count(),
+                'candidatos_recebidos'  => Envio::whereIn('vaga_id', $vagaIds)->count(),
+            ],
+            'candidatos_por_mes' => $candidatosPorMes,
+            'vagas_por_mes'      => $vagasPorMes,
+            'empresas'           => $tabela,
+        ]]);
+    }
+
     // GET /franquia/empresas
     public function index(Request $request)
     {
         $franquiaId = $this->tokenContextId($request);
 
         $query = Empresa::where('franquia_id', $franquiaId)
+            ->with('franquia:id,nome')
             ->withCount('vagas as total_vagas');
 
         if ($request->filled('status')) {
@@ -45,9 +95,13 @@ class FranquiaEmpresaGestaoController extends Controller
         return response()->json([
             'data' => $empresas->getCollection()->map(fn($e) => [
                 'id'           => $e->id,
+                'codigo'       => $e->codigo,
                 'razao_social' => $e->razao_social,
                 'nome_fantasia'=> $e->nome_fantasia,
                 'cnpj'         => $e->cnpj,
+                'tipo_empresa' => $e->tipo_empresa,
+                'tipo_acesso'  => $e->tipo_acesso,
+                'franquia'     => $e->franquia ? ['id' => $e->franquia->id, 'nome' => $e->franquia->nome] : null,
                 'cidade'       => $e->cidade,
                 'estado'       => $e->estado,
                 'email'        => $e->email,
