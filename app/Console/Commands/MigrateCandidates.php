@@ -88,7 +88,7 @@ class MigrateCandidates extends Command
                         'complemento'              => $oldCand->complement ?? $oldCurr->complement ?? null,
                         'bairro'                   => $oldCand->neighborhood ?? $oldCurr->neighborhood ?? null,
                         'cidade'                   => $oldCand->city ?? $oldCurr->city ?? null,
-                        'estado'                   => $oldCand->state ?? $oldCurr->state ?? null,
+                        'estado'                   => $this->mapEstado($oldCand->state ?? $oldCurr->state ?? null),
                         'experiencia_profissional' => $oldCurr->professional_experience ?? null,
                         'educacao'                 => $oldCurr->education ?? null,
                         'habilidades'              => $oldCurr->skills ?? null,
@@ -138,5 +138,56 @@ class MigrateCandidates extends Command
         $this->newLine();
         $this->info("Migração concluída com sucesso!");
         return 0;
+    }
+
+    private function mapEstado(?string $state): ?string
+    {
+        if (empty($state)) return null;
+        $state = trim(mb_strtoupper($state, 'UTF-8'));
+        
+        if (strlen($state) === 2) {
+            return $state;
+        }
+        
+        $mapping = [
+            'ACRE' => 'AC',
+            'ALAGOAS' => 'AL',
+            'AMAPA' => 'AP',
+            'AMAZONAS' => 'AM',
+            'BAHIA' => 'BA',
+            'CEARA' => 'CE',
+            'DISTRITO FEDERAL' => 'DF',
+            'ESPIRITO SANTO' => 'ES',
+            'GOIAS' => 'GO',
+            'MARANHAO' => 'MA',
+            'MATO GROSSO' => 'MT',
+            'MATO GROSSO DO SUL' => 'MS',
+            'MINAS GERAIS' => 'MG',
+            'PARA' => 'PA',
+            'PARAIBA' => 'PB',
+            'PARANA' => 'PR',
+            'PERNAMBUCO' => 'PE',
+            'PIAUI' => 'PI',
+            'RIO DE JANEIRO' => 'RJ',
+            'RIO GRANDE DO NORTE' => 'RN',
+            'RIO GRANDE DO SUL' => 'RS',
+            'RONDONIA' => 'RO',
+            'RORAIMA' => 'RR',
+            'SANTA CATARINA' => 'SC',
+            'SAO PAULO' => 'SP',
+            'SERGIPE' => 'SE',
+            'TOCANTINS' => 'TO'
+        ];
+        
+        // Remove accents
+        $normalized = iconv('UTF-8', 'ASCII//TRANSLIT', $state);
+        $normalized = preg_replace('/[^A-Z\s]/', '', mb_strtoupper($normalized));
+        $normalized = trim($normalized);
+        
+        if (isset($mapping[$normalized])) {
+            return $mapping[$normalized];
+        }
+        
+        return substr($state, 0, 2);
     }
 }
