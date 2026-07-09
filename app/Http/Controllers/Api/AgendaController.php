@@ -87,6 +87,23 @@ class AgendaController extends Controller
         if ($role === 'admin') {
             $franquias = Franquia::where('active', true)->get();
             foreach ($franquias as $f) {
+                // Calculate partnership duration
+                $tempo = '';
+                if ($f->data_inicio_parceria) {
+                    $inicio = Carbon::parse($f->data_inicio_parceria);
+                    $diffYears = (int) abs(Carbon::now()->diffInYears($inicio));
+                    if ($diffYears > 0) {
+                        $tempo = $diffYears == 1 ? "1 ano" : "{$diffYears} anos";
+                    } else {
+                        $diffMonths = (int) abs(Carbon::now()->diffInMonths($inicio));
+                        if ($diffMonths === 0) {
+                            $tempo = "menos de 1 mês";
+                        } else {
+                            $tempo = $diffMonths == 1 ? "1 mês" : "{$diffMonths} meses";
+                        }
+                    }
+                }
+
                 if ($f->data_nascimento) {
                     $nasc = Carbon::parse($f->data_nascimento);
                     $anos = (int) abs(round(Carbon::now()->diffInYears($nasc)));
@@ -96,6 +113,7 @@ class AgendaController extends Controller
                         'data' => $f->data_nascimento->format('Y-m-d'),
                         'tipo' => 'nascimento_franqueado',
                         'anos' => $anos,
+                        'tempo_parceria' => $tempo,
                     ];
                 }
                 if ($f->data_inicio_parceria) {
@@ -108,6 +126,7 @@ class AgendaController extends Controller
                             'data' => $f->data_inicio_parceria->format('Y-m-d'),
                             'tipo' => 'parceria_franqueado',
                             'anos' => $anos,
+                            'tempo_parceria' => $tempo,
                         ];
                     }
                 }
