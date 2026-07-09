@@ -91,7 +91,7 @@ class FranquiaVagaController extends Controller
         $items = $vagas->getCollection()->map(fn($v) => [
             'id'                => $v->id,
             'titulo'            => $v->titulo,
-            'empresa'           => ['id' => $v->empresa_id, 'razao_social' => $v->empresa?->razao_social],
+            'empresa'           => ['id' => $v->empresa_id, 'razao_social' => $v->empresa?->razao_social ?? $v->empresa?->nome_fantasia ?? 'Empresa não informada'],
             'cidade'            => $v->cidade,
             'estado'            => $v->estado,
             'bairro'            => $v->bairro,
