@@ -89,7 +89,7 @@ class AgendaController extends Controller
             foreach ($franquias as $f) {
                 if ($f->data_nascimento) {
                     $nasc = Carbon::parse($f->data_nascimento);
-                    $anos = Carbon::now()->diffInYears($nasc);
+                    $anos = (int) abs(round(Carbon::now()->diffInYears($nasc)));
                     $items[] = [
                         'nome' => $f->responsavel ?? $f->nome,
                         'empresa' => $f->nome,
@@ -100,7 +100,7 @@ class AgendaController extends Controller
                 }
                 if ($f->data_inicio_parceria) {
                     $adm  = Carbon::parse($f->data_inicio_parceria);
-                    $anos = Carbon::now()->diffInYears($adm);
+                    $anos = (int) abs(round(Carbon::now()->diffInYears($adm)));
                     if ($anos > 0) {
                         $items[] = [
                             'nome' => $f->responsavel ?? $f->nome,
@@ -142,7 +142,7 @@ class AgendaController extends Controller
         foreach ($colaboradores as $c) {
             if ($c->data_nascimento) {
                 $nasc = Carbon::parse($c->data_nascimento);
-                $anos = Carbon::now()->diffInYears($nasc);
+                $anos = (int) abs(round(Carbon::now()->diffInYears($nasc)));
                 $items[] = [
                     'nome' => $c->nome_completo,
                     'empresa' => $c->empresa?->nome_fantasia ?? 'Empresa',
@@ -153,7 +153,7 @@ class AgendaController extends Controller
             }
             if ($c->data_admissao) {
                 $adm  = Carbon::parse($c->data_admissao);
-                $anos = Carbon::now()->diffInYears($adm);
+                $anos = (int) abs(round(Carbon::now()->diffInYears($adm)));
                 if ($anos > 0) {
                     $items[] = [
                         'nome' => $c->nome_completo,
