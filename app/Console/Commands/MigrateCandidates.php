@@ -57,7 +57,7 @@ class MigrateCandidates extends Command
                     ['email' => $oldUser->email],
                     [
                         'name'     => $oldCand->name ?? $oldUser->name,
-                        'phone'    => $oldCand->phone ?? $oldUser->phone,
+                        'phone'    => $this->mapTelefone($oldCand->phone ?? $oldUser->phone),
                         'password' => $oldUser->password, // Preserva hash antigo
                         'active'   => $oldUser->status === 'active',
                     ]
@@ -80,7 +80,7 @@ class MigrateCandidates extends Command
                     ['user_id' => $user->id],
                     [
                         'franquia_id'              => $oldCand->franchise_id, // Valide os IDs de Franquia previamente
-                        'telefone'                 => $oldCand->phone ?? $oldUser->phone,
+                        'telefone'                 => $this->mapTelefone($oldCand->phone ?? $oldUser->phone),
                         'nascimento'               => $oldCand->birth_date,
                         'cep'                      => $this->mapCep($oldCand->cep ?? $oldCurr->cep ?? null),
                         'rua'                      => $oldCand->street ?? $oldCurr->street ?? null,
@@ -199,5 +199,20 @@ class MigrateCandidates extends Command
             return substr($clean, 0, 5) . '-' . substr($clean, 5);
         }
         return substr($clean, 0, 9);
+    }
+
+    private function mapTelefone(?string $phone): ?string
+    {
+        if (empty($phone)) return null;
+        
+        $parts = preg_split('/[;\/,]/', $phone);
+        $first = trim($parts[0]);
+        $clean = preg_replace('/\D/', '', $first);
+        
+        if (strlen($clean) > 20) {
+            return substr($clean, 0, 20);
+        }
+        
+        return $clean ?: substr($first, 0, 20);
     }
 }
