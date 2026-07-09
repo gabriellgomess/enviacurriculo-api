@@ -642,6 +642,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('ead',                            [FranquiaTDController::class, 'ead']);
             Route::get('ead/{id}',                       [FranquiaTDController::class, 'eadShow']);
             Route::post('ead/{id}/progresso',            [FranquiaTDController::class, 'eadProgresso']);
+            Route::post('ead/{cursoId}/provas/{provaId}/responder', [FranquiaTDController::class, 'responderProva']);
         });
 
         // Biblioteca

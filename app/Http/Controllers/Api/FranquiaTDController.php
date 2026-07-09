@@ -75,7 +75,9 @@ class FranquiaTDController extends Controller
             ->where('concluida', true)
             ->pluck('aula_id');
 
-        $data = $cursos->map(function ($curso) use ($progressoMap) {
+        $certificados = \App\Models\EadCertificado::where('franquia_id', $franquiaId)->pluck('curso_id');
+
+        $data = $cursos->map(function ($curso) use ($progressoMap, $certificados) {
             $totalAulas     = $curso->aulas->count();
             $aulasConcluidas = $curso->aulas->filter(fn($a) => $progressoMap->contains($a->id))->count();
 
@@ -85,6 +87,7 @@ class FranquiaTDController extends Controller
                 'descricao'        => $curso->descricao,
                 'total_aulas'      => $totalAulas,
                 'duracao_minutos'  => $curso->aulas->sum('duracao_minutos'),
+                'certificado'      => $certificados->contains($curso->id),
                 'progresso'        => [
                     'aulas_concluidas' => $aulasConcluidas,
                     'percentual'       => $totalAulas > 0 ? round($aulasConcluidas / $totalAulas * 100) : 0,
@@ -101,7 +104,7 @@ class FranquiaTDController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
-        $curso = EadCurso::with('aulas')->where('active', true)->findOrFail($id);
+        $curso = EadCurso::with(['aulas', 'provas.questoes'])->where('active', true)->findOrFail($id);
 
         $progressoMap = EadProgresso::where('franquia_id', $franquiaId)
             ->whereIn('aula_id', $curso->aulas->pluck('id'))
@@ -117,15 +120,33 @@ class FranquiaTDController extends Controller
             'concluida'        => $progressoMap->contains($a->id),
         ]);
 
+        $provas = $curso->provas->map(fn($p) => [
+            'id'          => $p->id,
+            'titulo'      => $p->titulo,
+            'nota_minima' => $p->nota_minima,
+            'questoes'    => $p->questoes->sortBy('ordem')->map(fn($q) => [
+                'id'       => $q->id,
+                'pergunta' => $q->pergunta,
+                'opcao_a'  => $q->opcao_a,
+                'opcao_b'  => $q->opcao_b,
+                'opcao_c'  => $q->opcao_c,
+                'opcao_d'  => $q->opcao_d,
+                'ordem'    => $q->ordem,
+            ])->values(),
+        ]);
+
         $concluidas = $progressoMap->count();
         $total      = $curso->aulas->count();
+        $certificado = \App\Models\EadCertificado::where('franquia_id', $franquiaId)->where('curso_id', $curso->id)->exists();
 
         return response()->json(['data' => [
-            'id'        => $curso->id,
-            'titulo'    => $curso->titulo,
-            'descricao' => $curso->descricao,
-            'aulas'     => $aulas->values(),
-            'progresso' => [
+            'id'          => $curso->id,
+            'titulo'      => $curso->titulo,
+            'descricao'   => $curso->descricao,
+            'aulas'       => $aulas->values(),
+            'provas'      => $provas->values(),
+            'certificado' => $certificado,
+            'progresso'   => [
                 'aulas_concluidas' => $concluidas,
                 'total'            => $total,
                 'percentual'       => $total > 0 ? round($concluidas / $total * 100) : 0,
@@ -163,5 +184,79 @@ class FranquiaTDController extends Controller
             'percentual' => $percentual,
             'concluido'  => $percentual >= 100,
         ]]);
+    }
+
+    // POST /franquia/td/ead/{cursoId}/provas/{provaId}/responder
+    public function responderProva(Request $request, int $cursoId, int $provaId)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $userId     = $request->user()?->id;
+
+        $request->validate([
+            'respostas' => 'required|array',
+        ]);
+
+        $curso = EadCurso::with('aulas:id,curso_id')->where('active', true)->findOrFail($cursoId);
+        $prova = \App\Models\EadProva::where('curso_id', $cursoId)->with('questoes')->findOrFail($provaId);
+
+        $totalAulas = $curso->aulas->count();
+        $concluidas = EadProgresso::where('franquia_id', $franquiaId)
+            ->whereIn('aula_id', $curso->aulas->pluck('id'))
+            ->where('concluida', true)->count();
+
+        if ($totalAulas > 0 && $concluidas < $totalAulas) {
+            return response()->json(['message' => 'Complete todas as aulas primeiro.'], 403);
+        }
+
+        $questoes = $prova->questoes;
+        $totalQuestoes = $questoes->count();
+        if ($totalQuestoes === 0) {
+            return response()->json(['message' => 'Esta prova não possui questões cadastradas.'], 422);
+        }
+
+        $respostasUsuario = $request->input('respostas');
+        $acertos = 0;
+
+        foreach ($questoes as $q) {
+            $respUser = $respostasUsuario[$q->id] ?? null;
+            if ($respUser !== null && strtolower(trim($respUser)) === strtolower(trim($q->resposta_correta))) {
+                $acertos++;
+            }
+        }
+
+        $nota = (int) round(($acertos / $totalQuestoes) * 100);
+        $aprovado = $nota >= $prova->nota_minima;
+
+        $resultado = \App\Models\EadProvaResposta::create([
+            'franquia_id' => $franquiaId,
+            'user_id'     => $userId,
+            'prova_id'    => $prova->id,
+            'respostas'   => $respostasUsuario,
+            'nota'        => $nota,
+            'aprovado'    => $aprovado,
+        ]);
+
+        $certificadoEmitido = false;
+        if ($aprovado) {
+            $hasCert = \App\Models\EadCertificado::where('franquia_id', $franquiaId)
+                ->where('curso_id', $cursoId)
+                ->exists();
+            if (!$hasCert) {
+                \App\Models\EadCertificado::create([
+                    'franquia_id' => $franquiaId,
+                    'user_id'     => $userId,
+                    'curso_id'    => $cursoId,
+                ]);
+                $certificadoEmitido = true;
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'nota'                => $nota,
+                'aprovado'            => $aprovado,
+                'certificado_emitido' => $certificadoEmitido,
+            ]
+        ]);
     }
 }
