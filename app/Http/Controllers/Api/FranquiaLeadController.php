@@ -117,7 +117,31 @@ class FranquiaLeadController extends Controller
             'observacoes' => 'nullable|string',
         ]);
 
-        $lead->update($data);
+        $oldStatus = $lead->status;
+
+        DB::transaction(function () use ($lead, $data, $oldStatus) {
+            $lead->update($data);
+
+            if ($oldStatus !== 'convertido' && $lead->status === 'convertido') {
+                // Criar franquia se mudou para convertido
+                $franquia = Franquia::create([
+                    'tipo'     => 'start',
+                    'nome'     => $lead->nome_completo,
+                    'email'    => $lead->email,
+                    'telefone' => $lead->telefone,
+                    'bairro'   => $lead->bairro,
+                    'cidade'   => $lead->cidade,
+                    'estado'   => $lead->estado,
+                ]);
+                $franquia->update(['codigo' => 'FR-' . str_pad($franquia->id, 4, '0', STR_PAD_LEFT)]);
+            } elseif ($oldStatus === 'convertido' && $lead->status !== 'convertido') {
+                // Excluir franquia se mudou de convertido para outro status
+                $franquia = Franquia::where('email', $lead->email)->first();
+                if ($franquia) {
+                    $franquia->delete();
+                }
+            }
+        });
 
         return response()->json($lead);
     }
