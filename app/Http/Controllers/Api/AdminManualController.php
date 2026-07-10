@@ -21,7 +21,7 @@ class AdminManualController extends Controller
     {
         $request->validate([
             'titulo'  => 'required|string|max:255',
-            'arquivo' => 'required|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,zip',
+            'arquivo' => 'required|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,zip,jpg,jpeg,png,gif,webp',
         ]);
 
         $file    = $request->file('arquivo');
@@ -66,7 +66,7 @@ class AdminManualController extends Controller
         
         $request->validate([
             'titulo'  => 'required|string|max:255',
-            'arquivo' => 'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,zip',
+            'arquivo' => 'nullable|file|max:20480|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,zip,jpg,jpeg,png,gif,webp',
         ]);
 
         $data = [
