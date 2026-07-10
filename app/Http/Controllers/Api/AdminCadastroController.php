@@ -126,4 +126,71 @@ class AdminCadastroController extends Controller
 
         return response()->json(['message' => 'Fornecedor excluído com sucesso.']);
     }
+
+    // GET /api/admin/cadastro/tipos-contrato
+    public function indexTiposContrato()
+    {
+        $tipos = \App\Models\TipoContrato::orderBy('nome')->get();
+        return response()->json(['data' => $tipos]);
+    }
+
+    // POST /api/admin/cadastro/tipos-contrato
+    public function storeTipoContrato(Request $request)
+    {
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'active' => 'nullable|boolean',
+        ]);
+
+        $slug = \Illuminate\Support\Str::slug($validated['nome']);
+        if (\App\Models\TipoContrato::where('slug', $slug)->exists()) {
+            return response()->json(['message' => 'Um tipo de contratação com este nome ou similar já existe.'], 422);
+        }
+
+        $tipo = \App\Models\TipoContrato::create([
+            'nome' => $validated['nome'],
+            'slug' => $slug,
+            'active' => $validated['active'] ?? true,
+        ]);
+
+        return response()->json(['message' => 'Tipo de contratação criado com sucesso.', 'data' => $tipo], 201);
+    }
+
+    // PUT /api/admin/cadastro/tipos-contrato/{id}
+    public function updateTipoContrato(Request $request, int $id)
+    {
+        $tipo = \App\Models\TipoContrato::findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:100',
+            'active' => 'required|boolean',
+        ]);
+
+        $slug = \Illuminate\Support\Str::slug($validated['nome']);
+        if (\App\Models\TipoContrato::where('slug', $slug)->where('id', '!=', $id)->exists()) {
+            return response()->json(['message' => 'Um tipo de contratação com este nome ou similar já existe.'], 422);
+        }
+
+        $tipo->update([
+            'nome' => $validated['nome'],
+            'slug' => $slug,
+            'active' => $validated['active'],
+        ]);
+
+        return response()->json(['message' => 'Tipo de contratação atualizado com sucesso.', 'data' => $tipo]);
+    }
+
+    // DELETE /api/admin/cadastro/tipos-contrato/{id}
+    public function destroyTipoContrato(int $id)
+    {
+        $tipo = \App\Models\TipoContrato::findOrFail($id);
+
+        if (\App\Models\Vaga::where('tipo_contrato', $tipo->slug)->exists()) {
+            return response()->json(['message' => 'Este tipo de contratação está sendo utilizado por vagas e não pode ser excluído.'], 422);
+        }
+
+        $tipo->delete();
+
+        return response()->json(['message' => 'Tipo de contratação excluído com sucesso.']);
+    }
 }

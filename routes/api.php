@@ -145,6 +145,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('agenda/tarefas/{id}/toggle',  [App\Http\Controllers\Api\AgendaController::class, 'toggle']);
     Route::delete('agenda/tarefas/{id}',        [App\Http\Controllers\Api\AgendaController::class, 'destroy']);
     Route::get('agenda/aniversarios',           [App\Http\Controllers\Api\AgendaController::class, 'aniversarios']);
+    Route::get('tipos-contrato',                [\App\Http\Controllers\Api\AdminCadastroController::class, 'indexTiposContrato']);
 
     /*
     |--------------------------------------------------------------------------
@@ -323,6 +324,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('cadastro/fornecedores',        [AdminCadastroController::class, 'storeFornecedor']);
         Route::put('cadastro/fornecedores/{id}',    [AdminCadastroController::class, 'updateFornecedor']);
         Route::delete('cadastro/fornecedores/{id}', [AdminCadastroController::class, 'destroyFornecedor']);
+        Route::get('cadastro/tipos-contrato',        [AdminCadastroController::class, 'indexTiposContrato']);
+        Route::post('cadastro/tipos-contrato',       [AdminCadastroController::class, 'storeTipoContrato']);
+        Route::put('cadastro/tipos-contrato/{id}',   [AdminCadastroController::class, 'updateTipoContrato']);
+        Route::delete('cadastro/tipos-contrato/{id}',[AdminCadastroController::class, 'destroyTipoContrato']);
 
         // Configurações - Benefícios, Tipos/Etapas Kanban e Níveis de Vagas
         Route::get('configuracoes/beneficios',               [AdminBeneficiosController::class, 'index']);

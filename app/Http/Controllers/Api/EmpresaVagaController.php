@@ -177,7 +177,7 @@ class EmpresaVagaController extends Controller
             'beneficios.*'     => 'integer|exists:beneficios_catalogo,id',
             'canal'            => 'required|in:agencia,plataforma,ambos',
             'modalidade'       => 'required|in:presencial,remoto,hibrido',
-            'tipo_contrato'    => 'required|in:clt,pj,estagio,temporario,freelancer,outros',
+            'tipo_contrato'    => 'required|string|max:50',
             'nivel_vaga_id'    => 'nullable|integer|exists:niveis_vagas,id',
             'numero_posicoes'  => 'nullable|integer|min:1',
             'salario_min'      => 'nullable|numeric|min:0',
