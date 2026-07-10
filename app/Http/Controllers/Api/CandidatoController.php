@@ -411,4 +411,14 @@ class CandidatoController extends Controller
             'data'    => $disc
         ], 201);
     }
+
+    public function destroyVinculo(int $id)
+    {
+        $envio = \App\Models\Envio::findOrFail($id);
+        $envio->delete();
+
+        return response()->json([
+            'message' => 'Candidato desvinculado com sucesso.'
+        ]);
+    }
 }

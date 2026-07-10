@@ -176,6 +176,26 @@ class VagaController extends Controller
         return response()->json(['message' => 'Franquias convidadas com sucesso.']);
     }
 
+    public function candidatos(int $id)
+    {
+        $candidatos = \App\Models\Envio::with(['candidato.user:id,name,email'])
+            ->where('vaga_id', $id)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($envio) {
+                return [
+                    'id' => $envio->id,
+                    'candidato_id' => $envio->candidato_id,
+                    'candidato_nome' => $envio->candidato?->user?->name ?? 'Candidato Desconhecido',
+                    'candidato_email' => $envio->candidato?->user?->email ?? '—',
+                    'status' => $envio->status,
+                    'created_at' => $envio->created_at,
+                ];
+            });
+
+        return response()->json(['data' => $candidatos]);
+    }
+
     private function gerarCodigo(): string
     {
         $ultimo = Vaga::withTrashed()

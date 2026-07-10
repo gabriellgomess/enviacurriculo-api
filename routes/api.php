@@ -211,6 +211,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('vagas', VagaController::class);
         Route::patch('vagas/{vaga}/status', [VagaController::class, 'changeStatus']);
         Route::post('vagas/{vaga}/convidar', [VagaController::class, 'convidarFranquias']);
+        Route::get('vagas/{id}/candidatos', [VagaController::class, 'candidatos']);
 
         // Parceiros - Categorias e Relatórios
         Route::get('parceiros/categorias',         [AdminParceiroCategoriaController::class, 'index']);
@@ -250,6 +251,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('candidatos/pareceres/{id}', [CandidatoController::class, 'destroyParecer']);
         Route::post('candidatos/{candidato}/vincular', [CandidatoController::class, 'vincular']);
         Route::get('candidatos/{candidato}/vinculacoes', [CandidatoController::class, 'vinculacoes']);
+        Route::delete('candidatos/vinculacoes/{id}', [CandidatoController::class, 'destroyVinculo']);
         Route::get('candidatos/{id}/disc', [CandidatoController::class, 'disc']);
         Route::post('candidatos/{id}/disc', [CandidatoController::class, 'storeDisc']);
 
