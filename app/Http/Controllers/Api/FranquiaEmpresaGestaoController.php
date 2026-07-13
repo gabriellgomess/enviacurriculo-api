@@ -90,7 +90,8 @@ class FranquiaEmpresaGestaoController extends Controller
             $query->where('active', $request->status === 'ativa');
         }
 
-        $empresas = $query->orderByDesc('created_at')->paginate(20);
+        $perPage = $request->integer('per_page', 20);
+        $empresas = $query->orderByDesc('created_at')->paginate($perPage);
 
         return response()->json([
             'data' => $empresas->getCollection()->map(fn($e) => [
