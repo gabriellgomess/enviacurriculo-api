@@ -50,9 +50,13 @@ class FranquiaMapaController extends Controller
         }
 
         if (in_array($tipo, ['candidatos', 'todos'])) {
-            $vagaIds = Vaga::whereIn('empresa_id', $empresaIds)->pluck('id');
+            $vagaIds = Vaga::where('franquia_id', $franquiaId)->pluck('id');
             $data['candidatos'] = Candidato::with('user:id,name')
-                ->whereHas('envios', fn($q) => $q->whereIn('vaga_id', $vagaIds))
+                ->where(function ($q) use ($franquiaId, $vagaIds) {
+                    $q->whereHas('envios', fn($s) => $s->whereIn('vaga_id', $vagaIds))
+                      ->orWhere('franquia_id', $franquiaId)
+                      ->orWhereNull('franquia_id');
+                })
                 ->whereNotNull('latitude')
                 ->whereNotNull('longitude')
                 ->where('active', true)
