@@ -15,6 +15,54 @@ class GeocodeService
         ?string $cidade,
         ?string $estado,
     ): ?array {
+        // Tenta endereço completo primeiro
+        $coords = $this->queryNominatim($logradouro, $numero, $bairro, $cidade, $estado);
+        if ($coords) {
+            return $coords;
+        }
+
+        // Fallback 1: sem número
+        if ($numero) {
+            $coords = $this->queryNominatim($logradouro, null, $bairro, $cidade, $estado);
+            if ($coords) {
+                return $coords;
+            }
+        }
+
+        // Fallback 2: apenas rua + cidade + estado
+        if ($logradouro) {
+            $coords = $this->queryNominatim($logradouro, null, null, $cidade, $estado);
+            if ($coords) {
+                return $coords;
+            }
+        }
+
+        // Fallback 3: apenas bairro + cidade + estado
+        if ($bairro) {
+            $coords = $this->queryNominatim(null, null, $bairro, $cidade, $estado);
+            if ($coords) {
+                return $coords;
+            }
+        }
+
+        // Fallback 4: apenas cidade + estado
+        if ($cidade) {
+            $coords = $this->queryNominatim(null, null, null, $cidade, $estado);
+            if ($coords) {
+                return $coords;
+            }
+        }
+
+        return null;
+    }
+
+    private function queryNominatim(
+        ?string $logradouro,
+        ?string $numero,
+        ?string $bairro,
+        ?string $cidade,
+        ?string $estado,
+    ): ?array {
         $parts = array_filter([
             $logradouro && $numero ? "{$logradouro}, {$numero}" : $logradouro,
             $bairro,
@@ -23,7 +71,7 @@ class GeocodeService
             'Brasil',
         ]);
 
-        if (count($parts) < 3) {
+        if (count($parts) < 2) {
             return null;
         }
 
