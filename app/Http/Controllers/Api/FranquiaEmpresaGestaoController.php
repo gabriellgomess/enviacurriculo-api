@@ -82,9 +82,14 @@ class FranquiaEmpresaGestaoController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
-        $query = Empresa::where('franquia_id', $franquiaId)
-            ->with('franquia:id,nome')
+        $query = Empresa::with('franquia:id,nome')
             ->withCount('vagas as total_vagas');
+
+        if ($request->boolean('all')) {
+            $query->where('active', true);
+        } else {
+            $query->where('franquia_id', $franquiaId);
+        }
 
         if ($request->filled('status')) {
             $query->where('active', $request->status === 'ativa');
