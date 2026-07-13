@@ -81,13 +81,17 @@ class FranquiaEmpresaGestaoController extends Controller
     public function index(Request $request)
     {
         $franquiaId = $this->tokenContextId($request);
+        $isPremium  = Franquia::find($franquiaId)?->tipo === 'premium';
 
         $query = Empresa::with('franquia:id,nome')
             ->withCount('vagas as total_vagas');
 
         if ($request->boolean('all')) {
             $query->where('active', true);
-        } else {
+        } elseif ($request->boolean('minhas') || !$isPremium) {
+            // Franquias start sempre veem só as próprias empresas; premium só quando
+            // pede explicitamente a aba "Minhas Empresas" (as demais empresas do
+            // sistema aparecem em "Todas as Empresas", sem esse filtro).
             $query->where('franquia_id', $franquiaId);
         }
 
@@ -115,6 +119,7 @@ class FranquiaEmpresaGestaoController extends Controller
                 'active'       => $e->active,
                 'total_vagas'  => $e->total_vagas,
                 'created_at'   => $e->created_at,
+                'is_owner'     => $e->franquia_id === $franquiaId,
             ]),
             'meta' => [
                 'total'        => $empresas->total(),

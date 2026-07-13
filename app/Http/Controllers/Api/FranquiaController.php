@@ -67,7 +67,7 @@ class FranquiaController extends Controller
             'cpf'                   => 'nullable|string|max:14',
             'data_nascimento'       => 'nullable|date',
             'responsavel'           => 'nullable|string|max:255',
-            'email'                 => 'nullable|email|max:255',
+            'email'                 => 'nullable|email|max:255|unique:users,email',
             'email_franqueado'      => 'nullable|email|max:255',
             'telefone'              => 'nullable|string|max:20',
             'data_inicio_parceria'  => 'nullable|date',
@@ -101,6 +101,8 @@ class FranquiaController extends Controller
             'menus_permitidos'      => 'nullable|array',
             'active'                => 'boolean',
             'password'              => 'nullable|string|min:6',
+        ], [
+            'email.unique' => 'Já existe um usuário cadastrado com este e-mail.',
         ]);
 
         return DB::transaction(function () use ($validated, $request) {
@@ -180,7 +182,7 @@ class FranquiaController extends Controller
             'cpf'                   => 'nullable|string|max:14',
             'data_nascimento'       => 'nullable|date',
             'responsavel'           => 'nullable|string|max:255',
-            'email'                 => 'nullable|email|max:255',
+            'email'                 => ['nullable', 'email', 'max:255', \Illuminate\Validation\Rule::unique('users', 'email')->ignore($franquia->user()?->id)],
             'email_franqueado'      => 'nullable|email|max:255',
             'telefone'              => 'nullable|string|max:20',
             'data_inicio_parceria'  => 'nullable|date',
@@ -210,6 +212,8 @@ class FranquiaController extends Controller
             'menus_permitidos'      => 'nullable|array',
             'active'                => 'boolean',
             'password'              => 'nullable|string|min:6',
+        ], [
+            'email.unique' => 'Já existe um usuário cadastrado com este e-mail.',
         ]);
 
         return DB::transaction(function () use ($validated, $franquia) {
