@@ -301,7 +301,7 @@ class AdminFinanceiroController extends Controller
     public function storeContaPagar(Request $request)
     {
         $validated = $request->validate([
-            'franquia_id'     => 'required|integer|exists:franquias,id',
+            'franquia_id'     => 'nullable|integer|exists:franquias,id',
             'descricao'       => 'required|string|max:255',
             'valor'           => 'required|numeric|min:0',
             'data_vencimento' => 'required|date',
