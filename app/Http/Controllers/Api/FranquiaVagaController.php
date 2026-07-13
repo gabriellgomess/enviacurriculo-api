@@ -158,6 +158,7 @@ class FranquiaVagaController extends Controller
             'beneficio_ids.*'    => 'integer|exists:beneficios_catalogo,id',
             'franquia_ids'       => 'nullable|array',
             'franquia_ids.*'     => 'integer|exists:franquias,id',
+            'observacoes'        => 'nullable|string',
         ]);
 
         // Valida que a empresa pertence a esta franquia
@@ -334,6 +335,7 @@ class FranquiaVagaController extends Controller
             'email_requisitante'=> 'nullable|email|max:255',
             'beneficio_ids'      => 'nullable|array',
             'beneficio_ids.*'    => 'integer|exists:beneficios_catalogo,id',
+            'observacoes'        => 'nullable|string',
         ]);
 
         $beneficioIds = $validated['beneficio_ids'] ?? null;

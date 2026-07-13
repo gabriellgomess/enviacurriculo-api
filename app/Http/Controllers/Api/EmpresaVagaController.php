@@ -196,6 +196,7 @@ class EmpresaVagaController extends Controller
             'horario_trabalho' => 'nullable|string|max:50',
             'expira_em'        => 'nullable|date',
             'requer_validacao_premium' => 'nullable|boolean',
+            'observacoes'      => 'nullable|string',
         ]);
     }
 

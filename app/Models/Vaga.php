@@ -44,6 +44,7 @@ class Vaga extends Model
         'email_requisitante',
         'logradouro',
         'numero',
+        'observacoes',
     ];
 
     protected $casts = [

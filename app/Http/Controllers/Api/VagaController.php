@@ -90,6 +90,7 @@ class VagaController extends Controller
             'requer_validacao_premium' => 'nullable|boolean',
             'data_abertura'   => 'nullable|date',
             'data_fechamento' => 'nullable|date|after_or_equal:data_abertura',
+            'observacoes'     => 'nullable|string',
         ]);
 
         $validated['codigo']  = $this->gerarCodigo();
@@ -140,6 +141,7 @@ class VagaController extends Controller
             'requer_validacao_premium' => 'nullable|boolean',
             'data_abertura'   => 'nullable|date',
             'data_fechamento' => 'nullable|date|after_or_equal:data_abertura',
+            'observacoes'     => 'nullable|string',
         ]);
 
         $vaga->update($validated);
