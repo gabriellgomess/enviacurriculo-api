@@ -113,7 +113,8 @@ class FranquiaFinanceiroController extends Controller
             'valor'           => 'required|numeric|min:0',
             'data_vencimento' => 'required|date',
             'categoria'       => 'nullable|string|max:50',
-            'fornecedor_id'   => 'nullable|integer',
+            'fornecedor_nome' => 'nullable|string|max:255',
+            'observacao'      => 'nullable|string',
         ]);
 
         $conta = FranquiaContaPagar::create(array_merge($validated, [
@@ -121,7 +122,7 @@ class FranquiaFinanceiroController extends Controller
             'status'      => 'pendente',
         ]));
 
-        return response()->json(['message' => 'Conta registrada.', 'data' => ['id' => $conta->id, 'status' => 'pendente']], 201);
+        return response()->json(['message' => 'Conta registrada.', 'data' => $conta], 201);
     }
 
     // PATCH /franquia/financeiro/contas-pagar/{id}/pagar

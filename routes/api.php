@@ -274,6 +274,7 @@ Route::middleware('auth:sanctum')->group(function () {
             // Contas a receber / pagar (consolidado de todas as franquias)
             Route::get('contas-receber', [AdminFinanceiroController::class, 'contasReceber']);
             Route::get('contas-pagar',   [AdminFinanceiroController::class, 'contasPagar']);
+            Route::post('contas-pagar',  [AdminFinanceiroController::class, 'storeContaPagar']);
 
             // Faturamento — cobranças da franqueadora às franquias
             Route::get('franquia-faturamentos',                          [AdminFinanceiroController::class, 'indexFranquiaFaturamentos']);

@@ -297,4 +297,26 @@ class AdminFinanceiroController extends Controller
             ],
         ]);
     }
+
+    public function storeContaPagar(Request $request)
+    {
+        $validated = $request->validate([
+            'franquia_id'     => 'required|integer|exists:franquias,id',
+            'descricao'       => 'required|string|max:255',
+            'valor'           => 'required|numeric|min:0',
+            'data_vencimento' => 'required|date',
+            'categoria'       => 'nullable|string|max:50',
+            'fornecedor_nome' => 'nullable|string|max:255',
+            'observacao'      => 'nullable|string',
+        ]);
+
+        $conta = FranquiaContaPagar::create(array_merge($validated, [
+            'status'      => 'pendente',
+        ]));
+
+        return response()->json([
+            'message' => 'Conta a pagar registrada com sucesso.',
+            'data'    => $conta->load('franquia:id,nome')
+        ], 201);
+    }
 }
