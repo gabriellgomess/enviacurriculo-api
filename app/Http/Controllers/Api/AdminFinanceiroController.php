@@ -319,4 +319,12 @@ class AdminFinanceiroController extends Controller
             'data'    => $conta->load('franquia:id,nome')
         ], 201);
     }
+
+    public function pagarConta(int $id)
+    {
+        $conta = FranquiaContaPagar::findOrFail($id);
+        $conta->update(['status' => 'pago', 'data_pagamento' => now()]);
+
+        return response()->json(['message' => 'Pagamento registrado.', 'status' => 'pago']);
+    }
 }
