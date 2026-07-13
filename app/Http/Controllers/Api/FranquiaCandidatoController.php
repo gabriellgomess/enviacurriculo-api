@@ -293,9 +293,31 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $vagaIds    = $this->vagaIds($franquiaId);
 
-        $envios = Envio::with(['candidato.user:id,name', 'vaga:id,titulo'])
-            ->whereIn('vaga_id', $vagaIds)
-            ->get();
+        $query = Envio::with(['candidato.user:id,name', 'candidato.franquia:id,nome', 'vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social'])
+            ->whereIn('vaga_id', $vagaIds);
+
+        $envios = $query->orderByDesc('created_at')->get();
+
+        if ($request->boolean('list')) {
+            $data = $envios->map(fn($e) => [
+                'id'               => $e->id,
+                'candidato_id'     => $e->candidato_id,
+                'candidato_nome'   => $e->candidato?->user?->name ?? '—',
+                'vaga_id'          => $e->vaga_id,
+                'vaga_nome'        => $e->vaga?->titulo ?? '—',
+                'vaga_salario'     => $e->vaga?->salario_min ?? '—',
+                'empresa_nome'     => $e->vaga?->empresa?->razao_social ?? '—',
+                'franquia'         => $e->candidato?->franquia?->nome ?? '—',
+                'status'           => $e->status,
+                'observacao'       => $e->observacao,
+                'salario_aprovado' => $e->salario_aprovado,
+                'data_admissao'    => $e->data_admissao?->toDateString(),
+                'data_saida'       => $e->data_saida?->toDateString(),
+                'created_at'       => $e->created_at,
+            ])->values();
+
+            return response()->json(['data' => $data]);
+        }
 
         $grouped = $envios->groupBy('status');
         $statusKeys = ['enviado', 'visualizado', 'em_processo', 'aprovado', 'reprovado'];
