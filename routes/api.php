@@ -105,6 +105,10 @@ Route::get('franquias-publicas', [\App\Http\Controllers\Api\FranquiaLeadControll
 Route::post('franquia-leads', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'store'])
     ->middleware('throttle:10,1');
 
+// Lead externo — webhook do formulário do cliente (campanhas de tráfego pago)
+Route::post('leads-externos', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'storeExterno'])
+    ->middleware('throttle:30,1');
+
 // Unsubscribe de e-mails por token
 Route::get('unsubscribe',  [\App\Http\Controllers\Api\UnsubscribeController::class, 'show'])
     ->middleware('throttle:30,1');

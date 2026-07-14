@@ -50,6 +50,49 @@ class FranquiaLeadController extends Controller
     }
 
     /**
+     * POST /leads-externos — público (webhook do formulário externo do cliente,
+     * usado em campanhas de tráfego pago). Recebe o payload no formato do
+     * formulário externo e normaliza para o padrão da tabela franquia_leads:
+     *   nome → nome_completo | prazo_inicio → tempo_inicio | "Sim"/"Não" → boolean
+     */
+    public function storeExterno(Request $request)
+    {
+        $data = $request->validate([
+            'nome'               => 'required|string|max:255',
+            'email'              => 'required|email|max:255',
+            'telefone'           => 'required|string|max:20',
+            'experiencia_rh'     => 'nullable|string|max:20',
+            'bairro'             => 'nullable|string|max:100',
+            'cidade'             => 'nullable|string|max:100',
+            'estado'             => 'nullable|string|size:2',
+            'capital_disponivel' => 'nullable|string|max:50',
+            'capital_confirmado' => 'nullable|string|max:20',
+            'prazo_inicio'       => 'nullable|string|max:50',
+            'motivacao'          => 'nullable|string',
+            'indicacao'          => 'nullable|string|max:255',
+        ]);
+
+        $simNao = fn($v) => mb_strtolower(trim((string) $v)) === 'sim';
+
+        FranquiaLead::create([
+            'nome_completo'      => $data['nome'],
+            'email'              => $data['email'],
+            'telefone'           => $data['telefone'],
+            'experiencia_rh'     => $simNao($data['experiencia_rh'] ?? null),
+            'bairro'             => $data['bairro'] ?? null,
+            'cidade'             => $data['cidade'] ?? null,
+            'estado'             => isset($data['estado']) ? strtoupper($data['estado']) : null,
+            'capital_disponivel' => $data['capital_disponivel'] ?? null,
+            'capital_confirmado' => $simNao($data['capital_confirmado'] ?? null),
+            'tempo_inicio'       => $data['prazo_inicio'] ?? null,
+            'motivacao'          => $data['motivacao'] ?? null,
+            'indicacao'          => $data['indicacao'] ?? null,
+        ]);
+
+        return response()->json(['message' => 'Lead recebido com sucesso.'], 201);
+    }
+
+    /**
      * POST /admin/leads/{lead}/converter — cria uma franquia a partir do lead.
      * A franquia entra com dados basicos (tipo start) e o admin completa depois
      * (incluindo o acesso/login).
