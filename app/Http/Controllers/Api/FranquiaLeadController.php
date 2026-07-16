@@ -8,6 +8,7 @@ use App\Models\Franquia;
 use App\Models\FranquiaLead;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class FranquiaLeadController extends Controller
 {
@@ -70,7 +71,39 @@ class FranquiaLeadController extends Controller
             'prazo_inicio'       => 'nullable|string|max:50',
             'motivacao'          => 'nullable|string',
             'indicacao'          => 'nullable|string|max:255',
+            'cf_turnstile_token' => 'nullable|string',
         ]);
+
+        // Anti-abuso: aceita EITHER token de webhook (WordPress/Elementor,
+        // server-to-server) OR token Turnstile (formulário chamando a API
+        // direto do navegador). Sem nenhum dos dois configurados, rota aberta.
+        $webhookToken    = config('services.leads_externos.webhook_token');
+        $turnstileSecret = config('services.turnstile.secret_key');
+
+        $authorized = !$webhookToken && !$turnstileSecret;
+
+        if (!$authorized && $webhookToken) {
+            $provided   = $request->query('token') ?? $request->header('X-Webhook-Token');
+            $authorized = $provided && hash_equals($webhookToken, $provided);
+        }
+
+        if (!$authorized && $turnstileSecret) {
+            $token = $data['cf_turnstile_token'] ?? $request->input('cf-turnstile-response');
+
+            if ($token) {
+                $check = Http::asForm()->post('https://challenges.cloudflare.com/turnstile/v0/siteverify', [
+                    'secret'   => $turnstileSecret,
+                    'response' => $token,
+                    'remoteip' => $request->ip(),
+                ]);
+
+                $authorized = $check->ok() && $check->json('success');
+            }
+        }
+
+        if (!$authorized) {
+            return response()->json(['message' => 'Falha na verificação anti-bot.'], 403);
+        }
 
         $simNao = fn($v) => mb_strtolower(trim((string) $v)) === 'sim';
 

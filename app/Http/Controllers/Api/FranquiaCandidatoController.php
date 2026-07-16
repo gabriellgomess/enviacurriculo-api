@@ -599,6 +599,7 @@ class FranquiaCandidatoController extends Controller
                     'empresa_nome'      => $p->empresa?->razao_social ?? $p->vaga?->empresa?->razao_social,
                     'criado_por_nome'   => $p->criador?->name,
                     'franquia_nome'     => $p->franquia?->nome ?? 'Outra Franquia',
+                    'dados'             => $isOwn ? $p->dados : null,
                     'is_own'            => $isOwn,
                     'created_at'        => $p->created_at,
                 ];
@@ -617,6 +618,7 @@ class FranquiaCandidatoController extends Controller
             'empresa_id' => 'nullable|integer|exists:empresas,id',
             'texto'      => 'required|string|max:5000',
             'nota'       => 'nullable|integer|min:1|max:5',
+            'dados'      => 'nullable|array',
         ]);
 
         $parecer = CandidatoParecer::create([
@@ -627,6 +629,7 @@ class FranquiaCandidatoController extends Controller
             'criado_por'  => $request->user()->id,
             'texto'       => $validated['texto'],
             'nota'        => $validated['nota'] ?? null,
+            'dados'       => $validated['dados'] ?? null,
         ]);
 
         return response()->json([
@@ -644,12 +647,13 @@ class FranquiaCandidatoController extends Controller
         $validated = $request->validate([
             'texto' => 'required|string|max:5000',
             'nota'  => 'nullable|integer|min:1|max:5',
+            'dados' => 'nullable|array',
         ]);
 
-        $parecer->update([
+        $parecer->update(array_merge([
             'texto' => $validated['texto'],
             'nota'  => $validated['nota'] ?? null,
-        ]);
+        ], array_key_exists('dados', $validated) ? ['dados' => $validated['dados']] : []));
 
         return response()->json([
             'message' => 'Parecer atualizado com sucesso.',

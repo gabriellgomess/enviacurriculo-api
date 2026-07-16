@@ -8,7 +8,9 @@ class CandidatoParecer extends Model
 {
     protected $table = 'candidato_pareceres';
 
-    protected $fillable = ['franquia_id', 'candidato_id', 'vaga_id', 'empresa_id', 'criado_por', 'texto', 'nota', 'status_aprovacao'];
+    protected $fillable = ['franquia_id', 'candidato_id', 'vaga_id', 'empresa_id', 'criado_por', 'texto', 'nota', 'dados', 'status_aprovacao'];
+
+    protected $casts = ['dados' => 'array'];
 
     public function candidato() { return $this->belongsTo(Candidato::class); }
     public function vaga()      { return $this->belongsTo(Vaga::class); }

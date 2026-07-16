@@ -43,4 +43,17 @@ return [
         'webhook_token' => env('ASAAS_WEBHOOK_TOKEN'),
     ],
 
+    // Cloudflare Turnstile (anti-bot do formulário externo de leads).
+    // Sem TURNSTILE_SECRET_KEY definida, a validação é ignorada.
+    'turnstile' => [
+        'secret_key' => env('TURNSTILE_SECRET_KEY'),
+    ],
+
+    // Webhook de leads externos (formulário WordPress/Elementor do cliente).
+    // Token compartilhado enviado na URL do webhook (?token=) ou no header
+    // X-Webhook-Token. Sem LEADS_EXTERNOS_WEBHOOK_TOKEN, a checagem é ignorada.
+    'leads_externos' => [
+        'webhook_token' => env('LEADS_EXTERNOS_WEBHOOK_TOKEN'),
+    ],
+
 ];
