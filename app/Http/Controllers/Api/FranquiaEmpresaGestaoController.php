@@ -146,7 +146,8 @@ class FranquiaEmpresaGestaoController extends Controller
             'razao_social'          => 'required|string|max:255',
             'nome_fantasia'         => 'nullable|string|max:255',
             'cnpj'                  => 'required|string|max:18|unique:empresas,cnpj',
-            'email'                 => 'required|email|max:255',
+            // unique em users: o e-mail vira o login da empresa
+            'email'                 => 'required|email|max:255|unique:users,email',
             'telefone'              => 'nullable|string|max:20',
             'cep'                   => 'nullable|string|max:9',
             'logradouro'            => 'nullable|string|max:255',
@@ -172,8 +173,10 @@ class FranquiaEmpresaGestaoController extends Controller
             $codigo = 'EM-' . str_pad($numero, 4, '0', STR_PAD_LEFT);
 
             $empresa = Empresa::create(array_merge(
-                collect($validated)->except(['senha', 'beneficios'])->toArray(),
+                collect($validated)->except(['senha', 'beneficios', 'logradouro'])->toArray(),
                 [
+                    // A coluna da tabela é `rua`; o formulário envia `logradouro`
+                    'rua'         => $validated['logradouro'] ?? null,
                     'codigo'      => $codigo,
                     'franquia_id' => $franquiaId,
                     'active'      => true,
@@ -248,7 +251,12 @@ class FranquiaEmpresaGestaoController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated, $empresa) {
-            $empresa->update(collect($validated)->except(['nova_senha', 'beneficios'])->toArray());
+            $dados = collect($validated)->except(['nova_senha', 'beneficios', 'logradouro'])->toArray();
+            // A coluna da tabela é `rua`; o formulário envia `logradouro`
+            if (array_key_exists('logradouro', $validated)) {
+                $dados['rua'] = $validated['logradouro'];
+            }
+            $empresa->update($dados);
 
             if (isset($validated['beneficios'])) {
                 $empresa->beneficios()->sync($validated['beneficios']);
