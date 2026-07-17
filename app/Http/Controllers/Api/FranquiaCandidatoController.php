@@ -598,7 +598,7 @@ class FranquiaCandidatoController extends Controller
                     'cargo_pretendido'  => $p->vaga?->titulo,
                     'empresa_nome'      => $p->empresa?->razao_social ?? $p->vaga?->empresa?->razao_social,
                     'criado_por_nome'   => $p->criador?->name,
-                    'franquia_nome'     => $p->franquia?->nome ?? 'Outra Franquia',
+                    'franquia_nome'     => $p->franquia?->nome ?? ($p->franquia_id ? 'Outra Franquia' : 'Administração'),
                     'dados'             => $isOwn ? $p->dados : null,
                     'is_own'            => $isOwn,
                     'created_at'        => $p->created_at,
