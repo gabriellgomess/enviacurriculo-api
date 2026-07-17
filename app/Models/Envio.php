@@ -20,6 +20,7 @@ class Envio extends Model
         'status_empresa',
         'observacao',
         'salario_aprovado',
+        'tipo_contrato',
         'data_admissao',
         'data_saida',
     ];

@@ -83,7 +83,7 @@ class FranquiaEmpresaGestaoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $isPremium  = Franquia::find($franquiaId)?->tipo === 'premium';
 
-        $query = Empresa::with('franquia:id,nome')
+        $query = Empresa::with('franquia:id,nome,tipo,telefone,email,email_franqueado')
             ->withCount('vagas as total_vagas');
 
         if ($request->boolean('all')) {
@@ -111,7 +111,13 @@ class FranquiaEmpresaGestaoController extends Controller
                 'cnpj'         => $e->cnpj,
                 'tipo_empresa' => $e->tipo_empresa,
                 'tipo_acesso'  => $e->tipo_acesso,
-                'franquia'     => $e->franquia ? ['id' => $e->franquia->id, 'nome' => $e->franquia->nome] : null,
+                'franquia'     => $e->franquia ? [
+                    'id'       => $e->franquia->id,
+                    'nome'     => $e->franquia->nome,
+                    'tipo'     => $e->franquia->tipo,
+                    'telefone' => $e->franquia->telefone,
+                    'email'    => $e->franquia->email_franqueado ?? $e->franquia->email,
+                ] : null,
                 'cidade'       => $e->cidade,
                 'estado'       => $e->estado,
                 'email'        => $e->email,
@@ -295,6 +301,20 @@ class FranquiaEmpresaGestaoController extends Controller
     }
 
     // GET /franquia/empresas/{id}/followups
+    // GET /franquia/empresas/{id}/faturamentos — consulta (somente leitura)
+    public function indexFaturamentos(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $empresa    = Empresa::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $faturamentos = \App\Models\EmpresaFaturamento::where('empresa_id', $empresa->id)
+            ->orderByDesc('ano')
+            ->orderByDesc('mes')
+            ->get();
+
+        return response()->json(['data' => $faturamentos]);
+    }
+
     public function indexFollowups(Request $request, int $id)
     {
         $franquiaId = $this->tokenContextId($request);

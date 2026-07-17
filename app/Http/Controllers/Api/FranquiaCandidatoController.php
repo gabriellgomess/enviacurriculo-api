@@ -250,6 +250,34 @@ class FranquiaCandidatoController extends Controller
         if ($request->filled('estado')) {
             $query->where('estado', $request->estado);
         }
+        if ($request->filled('telefone')) {
+            $digits = preg_replace('/\D/', '', $request->telefone);
+            $query->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(candidatos.telefone, '(', ''), ')', ''), '-', ''), ' ', '') LIKE ?", ["%{$digits}%"]);
+        }
+        if ($request->filled('email')) {
+            $e = $request->email;
+            $query->whereHas('user', fn($u) => $u->where('email', 'like', "%{$e}%"));
+        }
+        // Cadastro de origem: 'portal' (auto-cadastro) ou id da franquia
+        if ($request->filled('origem')) {
+            if ($request->origem === 'portal') {
+                $query->whereNull('candidatos.franquia_id');
+            } else {
+                $query->where('candidatos.franquia_id', $request->origem);
+            }
+        }
+        // Período do cadastro
+        if ($request->filled('data_de')) {
+            $query->whereDate('candidatos.created_at', '>=', $request->data_de);
+        }
+        if ($request->filled('data_ate')) {
+            $query->whereDate('candidatos.created_at', '<=', $request->data_ate);
+        }
+        // Número de vínculos (envios)
+        $query->withCount('envios');
+        if ($request->filled('vinculos_min')) {
+            $query->having('envios_count', '>=', (int) $request->vinculos_min);
+        }
 
         $perPage     = min((int) $request->query('per_page', 20), 100);
         $candidatos  = $query->orderByDesc('created_at')->paginate($perPage);
@@ -293,7 +321,7 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $vagaIds    = $this->vagaIds($franquiaId);
 
-        $query = Envio::with(['candidato.user:id,name', 'candidato.franquia:id,nome', 'vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social'])
+        $query = Envio::with(['candidato.user:id,name', 'candidato.franquia:id,nome', 'vaga:id,titulo,empresa_id,tipo_contrato', 'vaga.empresa:id,razao_social'])
             ->whereIn('vaga_id', $vagaIds);
 
         $envios = $query->orderByDesc('created_at')->get();
@@ -311,6 +339,8 @@ class FranquiaCandidatoController extends Controller
                 'status'           => $e->status,
                 'observacao'       => $e->observacao,
                 'salario_aprovado' => $e->salario_aprovado,
+                'tipo_contrato'    => $e->tipo_contrato,
+                'vaga_tipo_contrato' => $e->vaga?->tipo_contrato,
                 'data_admissao'    => $e->data_admissao?->toDateString(),
                 'data_saida'       => $e->data_saida?->toDateString(),
                 'created_at'       => $e->created_at,
@@ -564,17 +594,18 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $vagaIds    = $this->vagaIds($franquiaId);
 
-        $envios = Envio::with('vaga:id,titulo')
+        $envios = Envio::with(['vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social,nome_fantasia'])
             ->where('candidato_id', $id)
             ->whereIn('vaga_id', $vagaIds)
             ->orderByDesc('created_at')
             ->get()
             ->map(fn($e) => [
-                'id'          => $e->id,
-                'vaga_nome'   => $e->vaga?->titulo,
-                'franquia'    => null,
-                'status'      => $e->status,
-                'vinculado_em'=> $e->created_at,
+                'id'           => $e->id,
+                'vaga_nome'    => $e->vaga?->titulo,
+                'empresa_nome' => $e->vaga?->empresa?->razao_social ?? $e->vaga?->empresa?->nome_fantasia,
+                'franquia'     => null,
+                'status'       => $e->status,
+                'vinculado_em' => $e->created_at,
             ]);
 
         return response()->json(['data' => $envios]);
@@ -777,6 +808,7 @@ class FranquiaCandidatoController extends Controller
             'status'           => 'required|in:enviado,visualizado,em_processo,em_entrevista,pendente,aprovado,reprovado,desistiu,reposicao',
             'observacao'       => 'nullable|string',
             'salario_aprovado' => 'nullable|numeric|min:0',
+            'tipo_contrato'    => 'nullable|string|max:50',
             'data_admissao'    => 'nullable|date',
             'data_saida'       => 'nullable|date',
         ]);
@@ -787,7 +819,7 @@ class FranquiaCandidatoController extends Controller
 
         // status sempre; demais campos apenas quando enviados pelo front
         $envio->fill(['status' => $data['status']]);
-        foreach (['observacao', 'salario_aprovado', 'data_admissao', 'data_saida'] as $campo) {
+        foreach (['observacao', 'salario_aprovado', 'tipo_contrato', 'data_admissao', 'data_saida'] as $campo) {
             if (array_key_exists($campo, $data)) {
                 $envio->{$campo} = $data[$campo];
             }

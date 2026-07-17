@@ -54,7 +54,7 @@ class FranquiaVagaController extends Controller
         $franquiaId = $this->tokenContextId($request);
 
         // Nova regra: todos os perfis visualizam todas as vagas cadastradas.
-        $query = Vaga::with(['empresa:id,razao_social,nome_fantasia', 'franquiasCompartilhadas'])
+        $query = Vaga::with(['empresa:id,razao_social,nome_fantasia', 'franquiasCompartilhadas', 'franquia:id,nome,tipo,telefone,email,email_franqueado'])
             ->withCount('envios as total_candidatos');
 
         if ($request->filled('status')) {
@@ -85,8 +85,27 @@ class FranquiaVagaController extends Controller
         if ($request->filled('titulo')) {
             $query->where('titulo', 'like', '%' . $request->titulo . '%');
         }
+        if ($request->filled('tipo_contrato')) {
+            $query->where('tipo_contrato', $request->tipo_contrato);
+        }
+        if ($request->filled('modalidade')) {
+            $query->where('regime_trabalho', $request->modalidade);
+        }
+        if ($request->filled('empresa_id')) {
+            $query->where('empresa_id', $request->empresa_id);
+        }
+        if ($request->filled('genero')) {
+            $query->where('genero', $request->genero);
+        }
+        if ($request->filled('turno')) {
+            $query->where('turno', $request->turno);
+        }
 
-        $vagas = $query->orderByDesc('created_at')->paginate(20);
+        // Ordenação: padrão pela última atualização (mais recente primeiro)
+        $sort = in_array($request->get('sort'), ['created_at', 'updated_at', 'titulo']) ? $request->get('sort') : 'updated_at';
+        $dir  = $request->get('dir') === 'asc' ? 'asc' : 'desc';
+
+        $vagas = $query->orderBy($sort, $dir)->paginate(20);
 
         $items = $vagas->getCollection()->map(fn($v) => [
             'id'                => $v->id,
@@ -109,9 +128,20 @@ class FranquiaVagaController extends Controller
             'status'            => $v->status,
             'expira_em'         => $v->data_fechamento,
             'created_at'        => $v->created_at,
+            'updated_at'        => $v->updated_at,
+            'taxa_servico'      => $v->taxa_servico,
+            'genero'            => $v->genero,
+            'turno'             => $v->turno,
             'is_owner'          => $v->franquia_id === $franquiaId,
             'is_invited'        => $v->franquiasCompartilhadas->contains('id', $franquiaId),
             'shared_with'       => $v->franquiasCompartilhadas->map(fn($f) => ['id' => $f->id, 'nome' => $f->nome]),
+            'franquia_dona'     => $v->franquia ? [
+                'id'       => $v->franquia->id,
+                'nome'     => $v->franquia->nome,
+                'tipo'     => $v->franquia->tipo,
+                'telefone' => $v->franquia->telefone,
+                'email'    => $v->franquia->email_franqueado ?? $v->franquia->email,
+            ] : null,
         ]);
 
         return response()->json([
@@ -162,7 +192,16 @@ class FranquiaVagaController extends Controller
             'franquia_ids'       => 'nullable|array',
             'franquia_ids.*'     => 'integer|exists:franquias,id',
             'observacoes'        => 'nullable|string',
+            'requisitantes'          => 'nullable|array',
+            'requisitantes.*.nome'   => 'required_with:requisitantes|string|max:255',
+            'requisitantes.*.email'  => 'nullable|email|max:255',
         ]);
+
+        // Compatibilidade: primeiro requisitante espelhado nos campos antigos
+        if (!empty($validated['requisitantes'])) {
+            $validated['nome_requisitante']  = $validated['requisitantes'][0]['nome'] ?? null;
+            $validated['email_requisitante'] = $validated['requisitantes'][0]['email'] ?? null;
+        }
 
         // Valida que a empresa pertence a esta franquia
         $empresa = Empresa::where('id', $validated['empresa_id'])
@@ -199,6 +238,7 @@ class FranquiaVagaController extends Controller
             'horario_trabalho'   => $validated['horario_trabalho'] ?? null,
             'nome_requisitante'  => $validated['nome_requisitante'] ?? null,
             'email_requisitante' => $validated['email_requisitante'] ?? null,
+            'requisitantes'      => $validated['requisitantes'] ?? null,
             'status'          => 'publicada',
             'data_abertura'   => now(),
         ]);
@@ -236,7 +276,15 @@ class FranquiaVagaController extends Controller
         $franquias = Franquia::where('active', true)
             ->where('id', '!=', $franquiaId)
             ->orderBy('nome')
-            ->get(['id', 'codigo', 'nome']);
+            ->get(['id', 'codigo', 'nome', 'tipo', 'cidade', 'estado', 'cidade_empresa', 'estado_empresa'])
+            ->map(fn($f) => [
+                'id'     => $f->id,
+                'codigo' => $f->codigo,
+                'nome'   => $f->nome,
+                'tipo'   => $f->tipo,
+                'cidade' => $f->cidade ?? $f->cidade_empresa,
+                'estado' => $f->estado ?? $f->estado_empresa,
+            ]);
 
         return response()->json(['data' => $franquias]);
     }
@@ -253,14 +301,10 @@ class FranquiaVagaController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
+        // Visualização liberada para todas as franquias (mesmo não convidadas);
+        // ações de vincular/editar continuam restritas nos respectivos endpoints.
         $vaga = $this->vagaOuAbortar(
-            Vaga::with(['empresa:id,razao_social,nome_fantasia,cidade', 'documentos', 'beneficiosCatalogo'])
-                ->where(function ($q) use ($franquiaId) {
-                    $q->where('franquia_id', $franquiaId)
-                      ->orWhereHas('franquiasCompartilhadas', function ($sub) use ($franquiaId) {
-                          $sub->where('franquias.id', $franquiaId);
-                      });
-                })
+            Vaga::with(['empresa:id,razao_social,nome_fantasia,cidade', 'documentos', 'beneficiosCatalogo', 'franquia:id,nome,tipo,telefone,email,email_franqueado'])
                 ->withCount('envios as total_candidatos'),
             $id
         );
@@ -291,6 +335,20 @@ class FranquiaVagaController extends Controller
             'expira_em'         => $vaga->data_fechamento,
             'created_at'        => $vaga->created_at,
             'is_shared'         => $vaga->franquia_id !== $franquiaId,
+            'is_owner'          => $vaga->franquia_id === $franquiaId,
+            'updated_at'        => $vaga->updated_at,
+            'carga_horaria'     => $vaga->carga_horaria,
+            'observacoes'       => $vaga->observacoes,
+            'beneficios'        => $vaga->beneficios,
+            'codigo'            => $vaga->codigo,
+            'requisitantes'     => $vaga->requisitantes,
+            'franquia_dona'     => $vaga->franquia ? [
+                'id'       => $vaga->franquia->id,
+                'nome'     => $vaga->franquia->nome,
+                'tipo'     => $vaga->franquia->tipo,
+                'telefone' => $vaga->franquia->telefone,
+                'email'    => $vaga->franquia->email_franqueado ?? $vaga->franquia->email,
+            ] : null,
             'documentos'        => $vaga->documentos,
             'genero'             => $vaga->genero,
             'turno'              => $vaga->turno,
@@ -339,7 +397,16 @@ class FranquiaVagaController extends Controller
             'beneficio_ids'      => 'nullable|array',
             'beneficio_ids.*'    => 'integer|exists:beneficios_catalogo,id',
             'observacoes'        => 'nullable|string',
+            'requisitantes'          => 'nullable|array',
+            'requisitantes.*.nome'   => 'required_with:requisitantes|string|max:255',
+            'requisitantes.*.email'  => 'nullable|email|max:255',
         ]);
+
+        // Compatibilidade: primeiro requisitante espelhado nos campos antigos
+        if (array_key_exists('requisitantes', $validated) && !empty($validated['requisitantes'])) {
+            $validated['nome_requisitante']  = $validated['requisitantes'][0]['nome'] ?? null;
+            $validated['email_requisitante'] = $validated['requisitantes'][0]['email'] ?? null;
+        }
 
         $beneficioIds = $validated['beneficio_ids'] ?? null;
         unset($validated['beneficio_ids']);
@@ -428,13 +495,8 @@ class FranquiaVagaController extends Controller
     // GET /franquia/vagas/{vagaId}/candidatos
     public function candidatos(Request $request, int $vagaId)
     {
-        $franquiaId = $this->tokenContextId($request);
-        $vaga = $this->vagaOuAbortar(Vaga::where(function ($q) use ($franquiaId) {
-            $q->where('franquia_id', $franquiaId)
-              ->orWhereHas('franquiasCompartilhadas', function ($sub) use ($franquiaId) {
-                  $sub->where('franquias.id', $franquiaId);
-              });
-        }), $vagaId);
+        // Visualização dos candidatos vinculados liberada para todas as franquias
+        $vaga = $this->vagaOuAbortar(Vaga::query(), $vagaId);
 
         $envios = Envio::with('candidato.user:id,name')
             ->where('vaga_id', $vaga->id)
@@ -505,11 +567,13 @@ class FranquiaVagaController extends Controller
         $sharedIds = $vaga->franquiasCompartilhadas()->pluck('franquias.id')->toArray();
         $franquias = Franquia::where('active', true)
             ->where('id', '!=', $franquiaId)
-            ->get(['id', 'nome', 'tipo'])
+            ->get(['id', 'nome', 'tipo', 'cidade', 'estado', 'cidade_empresa', 'estado_empresa'])
             ->map(fn($f) => [
                 'id'        => $f->id,
                 'nome'      => $f->nome,
                 'tipo'      => $f->tipo,
+                'cidade'    => $f->cidade ?? $f->cidade_empresa,
+                'estado'    => $f->estado ?? $f->estado_empresa,
                 'is_shared' => in_array($f->id, $sharedIds),
             ]);
 
