@@ -39,6 +39,43 @@ class CandidatoController extends Controller
             $query->where('estado', $request->estado);
         }
 
+        if ($request->filled('telefone')) {
+            $digits = preg_replace('/\D/', '', $request->telefone);
+            $query->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(telefone, '(', ''), ')', ''), '-', ''), ' ', '') LIKE ?", ["%{$digits}%"]);
+        }
+
+        if ($request->filled('email')) {
+            $e = $request->email;
+            $query->whereHas('user', fn($u) => $u->where('email', 'like', "%{$e}%"));
+        }
+
+        if ($request->filled('cidade')) {
+            $query->where('cidade', 'like', '%' . $request->cidade . '%');
+        }
+
+        // Cadastro de origem: 'portal' (auto-cadastro) ou id da franquia
+        if ($request->filled('origem')) {
+            if ($request->origem === 'portal') {
+                $query->whereNull('franquia_id');
+            } else {
+                $query->where('franquia_id', $request->origem);
+            }
+        }
+
+        // Período do cadastro
+        if ($request->filled('data_de')) {
+            $query->whereDate('created_at', '>=', $request->data_de);
+        }
+        if ($request->filled('data_ate')) {
+            $query->whereDate('created_at', '<=', $request->data_ate);
+        }
+
+        // Número de vínculos (envios)
+        $query->withCount('envios')->with('franquia:id,nome');
+        if ($request->filled('vinculos_min')) {
+            $query->having('envios_count', '>=', (int) $request->vinculos_min);
+        }
+
         $candidatos = $query->orderByDesc('created_at')->paginate(20);
 
         $meta = [
@@ -246,7 +283,7 @@ class CandidatoController extends Controller
 
     public function pareceres(Request $request, int $id)
     {
-        $pareceres = \App\Models\CandidatoParecer::with(['criador:id,name', 'franquia:id,nome'])
+        $pareceres = \App\Models\CandidatoParecer::with(['criador:id,name', 'franquia:id,nome', 'empresa:id,razao_social', 'vaga:id,titulo'])
             ->where('candidato_id', $id)
             ->orderByDesc('created_at')
             ->get()
@@ -255,6 +292,10 @@ class CandidatoController extends Controller
                     'id'                => $p->id,
                     'parecer'           => $p->texto,
                     'nota'              => $p->nota,
+                    'dados'             => $p->dados,
+                    'empresa_id'        => $p->empresa_id,
+                    'empresa_nome'      => $p->empresa?->razao_social,
+                    'vaga_titulo'       => $p->vaga?->titulo,
                     'criado_por_nome'   => $p->criador?->name ?? 'Sistema',
                     'franquia_nome'     => $p->franquia?->nome ?? 'Administração',
                     'created_at'        => $p->created_at,
@@ -267,8 +308,11 @@ class CandidatoController extends Controller
     public function storeParecer(Request $request, int $id)
     {
         $validated = $request->validate([
-            'texto' => 'required|string|max:5000',
-            'nota'  => 'nullable|integer|min:1|max:5',
+            'texto'      => 'required|string|max:5000',
+            'nota'       => 'nullable|integer|min:1|max:5',
+            'empresa_id' => 'nullable|integer|exists:empresas,id',
+            'vaga_id'    => 'nullable|integer|exists:vagas,id',
+            'dados'      => 'nullable|array',
         ]);
 
         $parecer = \App\Models\CandidatoParecer::create([
@@ -276,6 +320,9 @@ class CandidatoController extends Controller
             'criado_por'   => $request->user()->id,
             'texto'        => $validated['texto'],
             'nota'         => $validated['nota'] ?? null,
+            'empresa_id'   => $validated['empresa_id'] ?? null,
+            'vaga_id'      => $validated['vaga_id'] ?? null,
+            'dados'        => $validated['dados'] ?? null,
         ]);
 
         return response()->json([
@@ -289,14 +336,17 @@ class CandidatoController extends Controller
         $parecer = \App\Models\CandidatoParecer::findOrFail($id);
 
         $validated = $request->validate([
-            'texto' => 'required|string|max:5000',
-            'nota'  => 'nullable|integer|min:1|max:5',
+            'texto'      => 'required|string|max:5000',
+            'nota'       => 'nullable|integer|min:1|max:5',
+            'empresa_id' => 'nullable|integer|exists:empresas,id',
+            'dados'      => 'nullable|array',
         ]);
 
-        $parecer->update([
+        $parecer->update(array_merge([
             'texto' => $validated['texto'],
             'nota'  => $validated['nota'] ?? null,
-        ]);
+        ], array_key_exists('empresa_id', $validated) ? ['empresa_id' => $validated['empresa_id']] : [],
+           array_key_exists('dados', $validated) ? ['dados' => $validated['dados']] : []));
 
         return response()->json([
             'message' => 'Parecer atualizado com sucesso.',

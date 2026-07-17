@@ -32,6 +32,20 @@ class AdminNivelVagaController extends Controller
         return response()->json(['message' => 'Nível de vaga criado.', 'data' => $nivel], 201);
     }
 
+    // PUT /api/admin/configuracoes/tipo-niveis-vagas/{id}
+    public function update(Request $request, int $id)
+    {
+        $nivel = NivelVaga::findOrFail($id);
+
+        $validated = $request->validate([
+            'nome' => 'required|string|max:255',
+        ]);
+
+        $nivel->update(['nome' => $validated['nome']]);
+
+        return response()->json(['message' => 'Nível de vaga atualizado com sucesso.', 'data' => $nivel]);
+    }
+
     // DELETE /api/admin/configuracoes/tipo-niveis-vagas/{id}
     public function destroy(int $id)
     {

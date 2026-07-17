@@ -49,7 +49,27 @@ class VagaController extends Controller
             $query->where('regime_trabalho', $request->regime_trabalho);
         }
 
-        $vagas = $query->orderByDesc('created_at')->paginate(20);
+        if ($request->filled('cidade')) {
+            $query->where('cidade', 'like', '%' . $request->cidade . '%');
+        }
+
+        if ($request->filled('estado')) {
+            $query->where('estado', $request->estado);
+        }
+
+        if ($request->filled('genero')) {
+            $query->where('genero', $request->genero);
+        }
+
+        if ($request->filled('turno')) {
+            $query->where('turno', $request->turno);
+        }
+
+        // Ordenação: padrão pela última atualização (mais recente primeiro)
+        $sort = in_array($request->get('sort'), ['created_at', 'updated_at', 'titulo']) ? $request->get('sort') : 'updated_at';
+        $dir  = $request->get('dir') === 'asc' ? 'asc' : 'desc';
+
+        $vagas = $query->orderBy($sort, $dir)->paginate(20);
 
         $meta = [
             'total'     => Vaga::count(),
@@ -91,7 +111,21 @@ class VagaController extends Controller
             'data_abertura'   => 'nullable|date',
             'data_fechamento' => 'nullable|date|after_or_equal:data_abertura',
             'observacoes'     => 'nullable|string',
+            'genero'          => 'nullable|string|max:20',
+            'turno'           => 'nullable|string|max:20',
+            'horario_trabalho'=> 'nullable|string|max:50',
+            'logradouro'      => 'nullable|string|max:255',
+            'numero'          => 'nullable|string|max:20',
+            'requisitantes'          => 'nullable|array',
+            'requisitantes.*.nome'   => 'required_with:requisitantes|string|max:255',
+            'requisitantes.*.email'  => 'nullable|email|max:255',
         ]);
+
+        // Compatibilidade: primeiro requisitante espelhado nos campos antigos
+        if (!empty($validated['requisitantes'])) {
+            $validated['nome_requisitante']  = $validated['requisitantes'][0]['nome'] ?? null;
+            $validated['email_requisitante'] = $validated['requisitantes'][0]['email'] ?? null;
+        }
 
         $validated['codigo']  = $this->gerarCodigo();
         $validated['status']  = $validated['status'] ?? 'rascunho';
@@ -142,7 +176,21 @@ class VagaController extends Controller
             'data_abertura'   => 'nullable|date',
             'data_fechamento' => 'nullable|date|after_or_equal:data_abertura',
             'observacoes'     => 'nullable|string',
+            'genero'          => 'nullable|string|max:20',
+            'turno'           => 'nullable|string|max:20',
+            'horario_trabalho'=> 'nullable|string|max:50',
+            'logradouro'      => 'nullable|string|max:255',
+            'numero'          => 'nullable|string|max:20',
+            'requisitantes'          => 'nullable|array',
+            'requisitantes.*.nome'   => 'required_with:requisitantes|string|max:255',
+            'requisitantes.*.email'  => 'nullable|email|max:255',
         ]);
+
+        // Compatibilidade: primeiro requisitante espelhado nos campos antigos
+        if (!empty($validated['requisitantes'])) {
+            $validated['nome_requisitante']  = $validated['requisitantes'][0]['nome'] ?? null;
+            $validated['email_requisitante'] = $validated['requisitantes'][0]['email'] ?? null;
+        }
 
         $vaga->update($validated);
 

@@ -21,7 +21,7 @@ class EmpresaController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Empresa::with('franquia:id,codigo,nome');
+        $query = Empresa::with('franquia:id,codigo,nome,email,email_franqueado,telefone');
 
         if ($request->filled('search')) {
             $s = $request->search;

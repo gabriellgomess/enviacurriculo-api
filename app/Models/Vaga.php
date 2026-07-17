@@ -42,6 +42,7 @@ class Vaga extends Model
         'horario_trabalho',
         'nome_requisitante',
         'email_requisitante',
+        'requisitantes',
         'logradouro',
         'numero',
         'observacoes',
@@ -57,6 +58,7 @@ class Vaga extends Model
         'ocultar_empresa' => 'boolean',
         'ocultar_endereco'=> 'boolean',
         'requer_validacao_premium' => 'boolean',
+        'requisitantes'   => 'array',
     ];
 
     protected $appends = ['modalidade', 'salario_oculto'];

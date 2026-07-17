@@ -208,6 +208,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('empresas/{empresa}/taxas', [EmpresaController::class, 'indexTaxas']);
         Route::post('empresas/{empresa}/taxas', [EmpresaController::class, 'upsertTaxa']);
         Route::delete('empresas/{empresa}/taxas/{taxa}', [EmpresaController::class, 'destroyTaxa']);
+
+        // Histórico de faturamento da empresa
+        Route::get('empresas/{empresa}/faturamentos', [\App\Http\Controllers\Api\AdminEmpresaFaturamentoController::class, 'index']);
+        Route::post('empresas/{empresa}/faturamentos', [\App\Http\Controllers\Api\AdminEmpresaFaturamentoController::class, 'store']);
+        Route::put('empresas/{empresa}/faturamentos/{id}', [\App\Http\Controllers\Api\AdminEmpresaFaturamentoController::class, 'update']);
+        Route::delete('empresas/{empresa}/faturamentos/{id}', [\App\Http\Controllers\Api\AdminEmpresaFaturamentoController::class, 'destroy']);
         // Benefícios da empresa
         Route::get('empresas/{empresa}/beneficios', [EmpresaController::class, 'indexBeneficios']);
         Route::post('empresas/{empresa}/beneficios', [EmpresaController::class, 'syncBeneficios']);
@@ -338,6 +344,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Configurações - Benefícios, Tipos/Etapas Kanban e Níveis de Vagas
         Route::get('configuracoes/beneficios',               [AdminBeneficiosController::class, 'index']);
         Route::post('configuracoes/beneficios',              [AdminBeneficiosController::class, 'store']);
+        Route::put('configuracoes/beneficios/{id}',          [AdminBeneficiosController::class, 'update']);
         Route::delete('configuracoes/beneficios/{id}',       [AdminBeneficiosController::class, 'destroy']);
         Route::get('configuracoes/tipo-kanban',              [AdminTipoKanbanController::class, 'index']);
         Route::post('configuracoes/tipo-kanban',             [AdminTipoKanbanController::class, 'store']);
@@ -350,6 +357,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('configuracoes/etapas-kanban/{id}/reorder', [AdminEtapasKanbanController::class, 'reorder']);
         Route::get('configuracoes/tipo-niveis-vagas',        [AdminNivelVagaController::class, 'index']);
         Route::post('configuracoes/tipo-niveis-vagas',       [AdminNivelVagaController::class, 'store']);
+        Route::put('configuracoes/tipo-niveis-vagas/{id}',   [AdminNivelVagaController::class, 'update']);
         Route::delete('configuracoes/tipo-niveis-vagas/{id}', [AdminNivelVagaController::class, 'destroy']);
         Route::get('configuracoes/backup',                   [App\Http\Controllers\Api\AdminBackupController::class, 'index']);
         Route::post('configuracoes/backup',                  [App\Http\Controllers\Api\AdminBackupController::class, 'store']);
