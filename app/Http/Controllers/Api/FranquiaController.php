@@ -27,7 +27,9 @@ class FranquiaController extends Controller
                   ->orWhere('responsavel', 'like', "%{$search}%")
                   ->orWhere('cidade', 'like', "%{$search}%")
                   ->orWhere('cnpj', 'like', "%{$search}%")
-                  ->orWhere('codigo', 'like', "%{$search}%");
+                  ->orWhere('codigo', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%")
+                  ->orWhere('email_franqueado', 'like', "%{$search}%");
             });
         }
 
@@ -285,6 +287,8 @@ class FranquiaController extends Controller
 
     public function destroy(Franquia $franquia)
     {
+        $user = $franquia->user();
+        $user?->delete();
         $franquia->delete();
 
         return response()->json(['message' => 'Franquia removida com sucesso.']);
