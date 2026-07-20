@@ -15,7 +15,7 @@ class AdminParecerController extends Controller
             'candidato:id,user_id',
             'candidato.user:id,name',
             'vaga:id,titulo,empresa_id',
-            'vaga.empresa:id,nome_empresa',
+            'vaga.empresa:id,razao_social,nome_fantasia',
             'franquia:id,nome,codigo',
             'criador:id,name'
         ])->orderByDesc('created_at');

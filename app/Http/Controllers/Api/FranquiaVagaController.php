@@ -100,6 +100,9 @@ class FranquiaVagaController extends Controller
         if ($request->filled('turno')) {
             $query->where('turno', $request->turno);
         }
+        if ($request->boolean('sem_candidato')) {
+            $query->whereDoesntHave('envios');
+        }
 
         // Ordenação: padrão pela última atualização (mais recente primeiro)
         $sort = in_array($request->get('sort'), ['created_at', 'updated_at', 'titulo']) ? $request->get('sort') : 'updated_at';

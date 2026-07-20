@@ -211,15 +211,23 @@ class FranquiaEmpresaGestaoController extends Controller
     }
 
     // GET /franquia/empresas/{id}
+    //
+    // Leitura não é restrita à própria franquia: uma vaga (inclusive as criadas
+    // pelo admin) pode estar associada a uma empresa de outra franquia, e a tela
+    // de editar/visualizar vaga precisa desses dados (endereço, taxas de serviço
+    // por nível) mesmo quando quem está vendo não é dono da empresa. As ações de
+    // escrita (update/toggleActive/resetPassword/destroy) continuam restritas.
     public function show(Request $request, int $id)
     {
         $franquiaId = $this->tokenContextId($request);
 
         $empresa = Empresa::with(['vagas:id,empresa_id,titulo,status,created_at', 'taxasServico'])
-            ->where('franquia_id', $franquiaId)
             ->findOrFail($id);
 
-        return response()->json(['data' => $empresa]);
+        return response()->json(['data' => [
+            ...$empresa->toArray(),
+            'is_owner' => $empresa->franquia_id === $franquiaId,
+        ]]);
     }
 
     // PUT /franquia/empresas/{id}

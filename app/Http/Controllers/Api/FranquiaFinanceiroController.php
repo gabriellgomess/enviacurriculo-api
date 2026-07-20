@@ -238,14 +238,18 @@ class FranquiaFinanceiroController extends Controller
             $impostoValor  = round($bruto * $impostoPerc / 100, 2);
             $liquidoBase   = $bruto - $impostoValor;
 
-            $royaltiesPerc  = (float) ($item['royalties_perc'] ?? 0);
-            $royaltiesValor = round($liquidoBase * $royaltiesPerc / 100, 2);
-            $marketingPerc  = (float) ($item['marketing_perc'] ?? 0);
-            $marketingValor = round($liquidoBase * $marketingPerc / 100, 2);
-            $comissaoPerc   = (float) ($item['comissao_perc'] ?? 0);
-            $comissaoValor  = round($liquidoBase * $comissaoPerc / 100, 2);
+            // Comissão bruta da franquia sobre o valor base (após imposto)
+            $comissaoPerc  = (float) ($item['comissao_perc'] ?? 0);
+            $comissaoValor = round($liquidoBase * $comissaoPerc / 100, 2);
 
-            $liquido = round($liquidoBase - $royaltiesValor - $marketingValor - $comissaoValor, 2);
+            // Royalties e marketing incidem sobre a comissão da franquia, não sobre o valor base
+            $royaltiesPerc  = (float) ($item['royalties_perc'] ?? 0);
+            $royaltiesValor = round($comissaoValor * $royaltiesPerc / 100, 2);
+            $marketingPerc  = (float) ($item['marketing_perc'] ?? 0);
+            $marketingValor = round($comissaoValor * $marketingPerc / 100, 2);
+
+            // Comissão líquida da franquia, já descontados royalties e marketing
+            $liquido = round($comissaoValor - $royaltiesValor - $marketingValor, 2);
 
             $criadas[] = FranquiaContaReceber::create([
                 'franquia_id'      => $franquiaId,
