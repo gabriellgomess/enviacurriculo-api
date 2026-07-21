@@ -14,8 +14,8 @@ class AdminParecerController extends Controller
     {
         $query = CandidatoParecer::with([
             'candidato.user:id,name',
-            'vaga.empresa:id,nome_empresa,nome_fantasia,razao_social',
-            'empresa:id,nome_empresa,nome_fantasia,razao_social',
+            'vaga.empresa:id,nome_fantasia,razao_social',
+            'empresa:id,nome_fantasia,razao_social',
             'franquia:id,nome,codigo,responsavel',
             'criador:id,name'
         ])->orderByDesc('id');
@@ -33,10 +33,10 @@ class AdminParecerController extends Controller
                     $sq->where('nome', 'like', $term)->orWhere('codigo', 'like', $term)->orWhere('responsavel', 'like', $term);
                 })
                 ->orWhereHas('empresa', function ($sq) use ($term) {
-                    $sq->where('nome_empresa', 'like', $term)->orWhere('nome_fantasia', 'like', $term)->orWhere('razao_social', 'like', $term);
+                    $sq->where('nome_fantasia', 'like', $term)->orWhere('razao_social', 'like', $term);
                 })
                 ->orWhereHas('vaga.empresa', function ($sq) use ($term) {
-                    $sq->where('nome_empresa', 'like', $term)->orWhere('nome_fantasia', 'like', $term)->orWhere('razao_social', 'like', $term);
+                    $sq->where('nome_fantasia', 'like', $term)->orWhere('razao_social', 'like', $term);
                 })
                 ->orWhereHas('criador', function ($sq) use ($term) {
                     $sq->where('name', 'like', $term);
@@ -62,10 +62,8 @@ class AdminParecerController extends Controller
 
             $empresaNome = $p->empresa?->nome_fantasia
                 ?? $p->empresa?->razao_social
-                ?? $p->empresa?->nome_empresa
                 ?? $p->vaga?->empresa?->nome_fantasia
                 ?? $p->vaga?->empresa?->razao_social
-                ?? $p->vaga?->empresa?->nome_empresa
                 ?? null;
 
             return [
