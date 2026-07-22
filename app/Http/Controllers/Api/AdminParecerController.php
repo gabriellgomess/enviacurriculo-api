@@ -13,6 +13,7 @@ class AdminParecerController extends Controller
     public function index(Request $request)
     {
         $query = CandidatoParecer::with([
+            'candidato:id,user_id,rua,numero,bairro,cidade,estado',
             'candidato.user:id,name',
             'vaga.empresa:id,nome_fantasia,razao_social',
             'empresa:id,nome_fantasia,razao_social',
@@ -77,6 +78,13 @@ class AdminParecerController extends Controller
                 ] : null,
                 'empresa_nome'     => $empresaNome,
                 'candidato_nome'   => $p->candidato?->user?->name ?? $p->candidato?->nome ?? '—',
+                'candidato_endereco' => $p->candidato ? implode(', ', array_filter([
+                    $p->candidato->logradouro,
+                    $p->candidato->numero,
+                    $p->candidato->bairro,
+                    $p->candidato->cidade,
+                    $p->candidato->estado,
+                ])) : null,
                 'consultor_nome'   => $p->criador?->name ?? 'Sistema',
                 'vaga_titulo'      => $p->vaga?->titulo ?? 'Geral',
                 'texto'            => $p->texto,
