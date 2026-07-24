@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FranquiaContaReceber;
+use App\Models\FranquiaLead;
 use App\Models\Parceiro;
 use App\Models\User;
 use App\Models\UserContext;
@@ -163,6 +164,21 @@ class ParceiroCadastroController extends Controller
                     ]
                 );
             }
+
+            // Lead no Comercial do Admin (filtro Parceiro) para acompanhamento
+            FranquiaLead::create([
+                'tipo'          => 'parceiro',
+                'nome_completo' => $parceiro->nome_empresa,
+                'email'         => $parceiro->email,
+                'telefone'      => $parceiro->telefone,
+                'bairro'        => $parceiro->bairro,
+                'cidade'        => $parceiro->cidade,
+                'estado'        => $parceiro->estado,
+                'status'        => 'novo',
+                'observacoes'   => "Parceiro efetivado na plataforma."
+                    . ($parceiro->plano ? " Plano: {$parceiro->plano}." : '')
+                    . ($parceiro->cnpj ? " CNPJ: {$parceiro->cnpj}." : ''),
+            ]);
 
             return response()->json([
                 'message' => 'Cadastro realizado com sucesso.',

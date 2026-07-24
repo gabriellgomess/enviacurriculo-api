@@ -8,6 +8,7 @@ class FranquiaLead extends Model
 {
     protected $table    = 'franquia_leads';
     protected $fillable = [
+        'tipo',
         'nome_completo', 'email', 'telefone', 'experiencia_rh',
         'bairro', 'cidade', 'estado', 'capital_disponivel', 'capital_confirmado',
         'tempo_inicio', 'motivacao', 'indicacao', 'status', 'observacoes',
