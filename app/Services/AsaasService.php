@@ -97,6 +97,84 @@ class AsaasService
         return $res['status'] ?? 'PENDING';
     }
 
+    /**
+     * Cria uma ASSINATURA recorrente mensal no Asaas e retorna os dados da
+     * primeira cobrança (PIX ou Boleto) para exibir no cadastro do parceiro.
+     *
+     * Integração real — exige ASAAS_API_KEY configurada.
+     *
+     * @param array{nome:string, cpf:string, email:?string, valor:float, descricao:string, billing_type:string} $dados
+     * @return array{
+     *   subscription_id:string, customer_id:string, payment_id:?string, billing_type:string,
+     *   pix:?array{qr_code:string, qr_code_image:string, expiration_date:string},
+     *   boleto:?array{invoice_url:?string, bank_slip_url:?string}
+     * }
+     */
+    public function criarAssinatura(array $dados): array
+    {
+        if (!$this->isConfigured()) {
+            throw new \RuntimeException('Gateway de pagamento (Asaas) não configurado.');
+        }
+
+        $billingType = in_array($dados['billing_type'] ?? 'PIX', ['PIX', 'BOLETO'], true)
+            ? $dados['billing_type']
+            : 'PIX';
+
+        $cliente = $this->buscarOuCriarCliente($dados);
+
+        $assinatura = Http::withHeaders(['access_token' => $this->apiKey])
+            ->post("{$this->baseUrl}/subscriptions", [
+                'customer'    => $cliente['id'],
+                'billingType' => $billingType,
+                'value'       => $dados['valor'],
+                'cycle'       => 'MONTHLY',
+                'nextDueDate' => now()->toDateString(),
+                'description' => $dados['descricao'],
+            ])
+            ->throw()
+            ->json();
+
+        // Primeira cobrança gerada automaticamente pela assinatura
+        $pagamentos = Http::withHeaders(['access_token' => $this->apiKey])
+            ->get("{$this->baseUrl}/subscriptions/{$assinatura['id']}/payments")
+            ->throw()
+            ->json();
+
+        $primeiro = $pagamentos['data'][0] ?? null;
+
+        $pix    = null;
+        $boleto = null;
+
+        if ($primeiro) {
+            if ($billingType === 'PIX') {
+                $qrCode = Http::withHeaders(['access_token' => $this->apiKey])
+                    ->get("{$this->baseUrl}/payments/{$primeiro['id']}/pixQrCode")
+                    ->json();
+
+                $imagemBase64 = $qrCode['encodedImage'] ?? '';
+                $pix = [
+                    'qr_code'         => $qrCode['payload'] ?? '',
+                    'qr_code_image'   => $imagemBase64 ? "data:image/png;base64,{$imagemBase64}" : '',
+                    'expiration_date' => $qrCode['expirationDate'] ?? now()->addHour()->toIso8601String(),
+                ];
+            } else {
+                $boleto = [
+                    'invoice_url'   => $primeiro['invoiceUrl'] ?? null,
+                    'bank_slip_url' => $primeiro['bankSlipUrl'] ?? null,
+                ];
+            }
+        }
+
+        return [
+            'subscription_id' => $assinatura['id'],
+            'customer_id'     => $cliente['id'],
+            'payment_id'      => $primeiro['id'] ?? null,
+            'billing_type'    => $billingType,
+            'pix'             => $pix,
+            'boleto'          => $boleto,
+        ];
+    }
+
     private function buscarOuCriarCliente(array $dados): array
     {
         $busca = Http::withHeaders(['access_token' => $this->apiKey])

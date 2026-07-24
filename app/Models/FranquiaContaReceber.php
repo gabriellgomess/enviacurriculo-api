@@ -15,6 +15,7 @@ class FranquiaContaReceber extends Model
         'comissao_perc', 'comissao_valor', 'comissao_s_start_perc', 'comissao_s_start_valor',
         'valor_liquido', 'data_faturamento', 'data_vencimento', 'data_reposicao',
         'is_sstart', 'status',
+        'origem', 'parceiro_id', 'descricao', 'asaas_payment_id', 'asaas_subscription_id',
     ];
 
     protected $casts = [
@@ -25,4 +26,6 @@ class FranquiaContaReceber extends Model
     ];
 
     public function franquia() { return $this->belongsTo(Franquia::class); }
+
+    public function parceiro() { return $this->belongsTo(Parceiro::class); }
 }

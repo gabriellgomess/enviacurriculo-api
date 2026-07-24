@@ -126,23 +126,29 @@ class AdminFinanceiroController extends Controller
 
     public function contasReceber(Request $request)
     {
+        $origem = $request->input('origem');
+        $aplicarFiltros = function ($q) use ($request, $origem) {
+            if ($request->filled('franquia_id')) {
+                $q->where('franquia_id', $request->franquia_id);
+            }
+            if ($request->filled('status') && $request->status !== 'todos') {
+                $q->where('status', $request->status);
+            }
+            if ($origem && $origem !== 'todos') {
+                $q->where('origem', $origem);
+            }
+            return $q;
+        };
+
         $query = FranquiaContaReceber::query()
-            ->with('franquia:id,nome')
+            ->with(['franquia:id,nome', 'parceiro:id,nome_empresa'])
             ->orderByDesc('created_at');
 
-        if ($request->filled('franquia_id')) {
-            $query->where('franquia_id', $request->franquia_id);
-        }
-
-        if ($request->filled('status') && $request->status !== 'todos') {
-            $query->where('status', $request->status);
-        }
+        $aplicarFiltros($query);
 
         $contas = $query->paginate(20);
 
-        $totais = FranquiaContaReceber::query()
-            ->when($request->filled('franquia_id'), fn($q) => $q->where('franquia_id', $request->franquia_id))
-            ->when($request->filled('status') && $request->status !== 'todos', fn($q) => $q->where('status', $request->status))
+        $totais = $aplicarFiltros(FranquiaContaReceber::query())
             ->selectRaw('COALESCE(SUM(valor_bruto),0) as bruto, COALESCE(SUM(valor_liquido),0) as liquido')
             ->first();
 

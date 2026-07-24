@@ -29,11 +29,17 @@ class Parceiro extends Model
         'estado',
         'especialidades',
         'active',
+        'asaas_customer_id',
+        'asaas_subscription_id',
+        'plano',
+        'plano_valor',
+        'assinatura_status',
     ];
 
     protected $casts = [
-        'active'        => 'boolean',
+        'active'         => 'boolean',
         'especialidades' => 'array',
+        'plano_valor'    => 'decimal:2',
     ];
 
     public function user()

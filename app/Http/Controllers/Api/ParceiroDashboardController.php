@@ -19,10 +19,11 @@ class ParceiroDashboardController extends Controller
         $parceiroId = $this->tokenContextId($request);
 
         $stats = [
-            'total'    => ParceiroVisualizacao::where('parceiro_id', $parceiroId)->count(),
-            'telefone' => ParceiroVisualizacao::where('parceiro_id', $parceiroId)->where('tipo', 'telefone')->count(),
-            'email'    => ParceiroVisualizacao::where('parceiro_id', $parceiroId)->where('tipo', 'email')->count(),
-            'proposta' => ParceiroVisualizacao::where('parceiro_id', $parceiroId)->where('tipo', 'proposta')->count(),
+            'total'     => ParceiroVisualizacao::where('parceiro_id', $parceiroId)->count(),
+            'revelados' => ParceiroVisualizacao::where('parceiro_id', $parceiroId)->whereIn('tipo', ['telefone', 'email', 'proposta'])->count(),
+            'telefone'  => ParceiroVisualizacao::where('parceiro_id', $parceiroId)->where('tipo', 'telefone')->count(),
+            'email'     => ParceiroVisualizacao::where('parceiro_id', $parceiroId)->where('tipo', 'email')->count(),
+            'proposta'  => ParceiroVisualizacao::where('parceiro_id', $parceiroId)->where('tipo', 'proposta')->count(),
         ];
 
         $visualizacoes = ParceiroVisualizacao::where('parceiro_id', $parceiroId)
