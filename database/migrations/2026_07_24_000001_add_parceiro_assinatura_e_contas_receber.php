@@ -3,7 +3,6 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -22,7 +21,9 @@ return new class extends Migration
 
         // ── Contas a receber: passa a comportar também assinaturas de parceiros ─
         // franquia_id deixa de ser obrigatório (receita de parceiro não tem franquia)
-        DB::statement('ALTER TABLE franquia_contas_receber MODIFY franquia_id BIGINT UNSIGNED NULL');
+        Schema::table('franquia_contas_receber', function (Blueprint $table) {
+            $table->unsignedBigInteger('franquia_id')->nullable()->change();
+        });
 
         Schema::table('franquia_contas_receber', function (Blueprint $table) {
             $table->string('origem', 20)->default('franquia')->after('franquia_id');

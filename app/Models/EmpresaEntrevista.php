@@ -12,6 +12,7 @@ class EmpresaEntrevista extends Model
         'empresa_id',
         'candidato_id',
         'vaga_id',
+        'parecer_id',
         'data',
         'local',
         'modalidade',
@@ -38,5 +39,10 @@ class EmpresaEntrevista extends Model
     public function vaga()
     {
         return $this->belongsTo(Vaga::class);
+    }
+
+    public function parecer()
+    {
+        return $this->belongsTo(CandidatoParecer::class, 'parecer_id');
     }
 }

@@ -96,26 +96,27 @@ class EmpresaCandidatoRecebidoController extends Controller
             'status'           => 'required|in:pendente,em_processo,aprovado,reprovado,desistiu,reposicao',
             'observacao'       => 'nullable|string',
             'salario_aprovado' => 'nullable|numeric|min:0',
+            'tipo_contrato'    => 'nullable|string|max:50',
             'data_admissao'    => 'nullable|date',
             'data_saida'       => 'nullable|date',
         ]);
 
         $envio = $this->baseQuery($empresaId)->findOrFail($id);
 
-        $envio->update([
-            'status_empresa'   => $data['status'],
-            'observacao'       => $data['observacao'] ?? $envio->observacao,
-            'salario_aprovado' => $data['salario_aprovado'] ?? $envio->salario_aprovado,
-            'data_admissao'    => $data['data_admissao'] ?? $envio->data_admissao,
-            'data_saida'       => $data['data_saida'] ?? $envio->data_saida,
-            // reflete no status que o candidato enxerga
-            'status'           => match ($data['status']) {
-                'aprovado'    => 'aprovado',
-                'reprovado'   => 'reprovado',
-                'em_processo' => 'em_processo',
-                default       => $envio->status,
-            },
+        $envio->fill([
+            'status_empresa' => $data['status'],
+            // Mesmo processo seletivo: reflete para a franquia e para o candidato
+            'status'         => Envio::statusFranquiaPara($data['status'], $envio->status),
         ]);
+
+        // Demais campos apenas quando enviados — mesma regra do painel da franquia
+        foreach (['observacao', 'salario_aprovado', 'tipo_contrato', 'data_admissao', 'data_saida'] as $campo) {
+            if (array_key_exists($campo, $data)) {
+                $envio->{$campo} = $data[$campo];
+            }
+        }
+
+        $envio->save();
 
         return response()->json(['message' => 'Status atualizado.']);
     }
@@ -130,7 +131,15 @@ class EmpresaCandidatoRecebidoController extends Controller
             'arquivo' => 'nullable|file|max:5120|mimes:pdf',
         ]);
 
-        $envio = $this->baseQuery($empresaId)->with('vaga:id,requer_validacao_premium')->findOrFail($id);
+        $envio = $this->baseQuery($empresaId)->with('vaga:id,requer_validacao_premium,canal')->findOrFail($id);
+
+        // Vaga do produto Agência: o parecer é responsabilidade da franquia,
+        // que conduz o recrutamento. A empresa acompanha, mas não emite.
+        if ($envio->vaga?->canal === 'agencia') {
+            return response()->json([
+                'message' => 'Esta vaga é conduzida pela agência: o parecer do candidato é emitido pela franquia responsável.',
+            ], 403);
+        }
 
         $arquivoPath = null;
         $arquivoNome = null;
@@ -191,25 +200,39 @@ class EmpresaCandidatoRecebidoController extends Controller
     {
         $empresaId = $this->tokenContextId($request);
 
-        $candidatos = \App\Models\Candidato::with(['user:id,name', 'envios' => function ($q) use ($empresaId) {
-                $q->whereHas('vaga', fn($sub) => $sub->where('empresa_id', $empresaId))
-                    ->orderByDesc('created_at');
-            }])
-            ->whereHas('envios.vaga', fn($q) => $q->where('empresa_id', $empresaId))
-            ->whereNotNull('latitude')
-            ->whereNotNull('longitude')
+        // O mapa reflete o BANCO DE CURRÍCULOS da empresa (não apenas quem se
+        // candidatou). Coordenadas próprias do currículo têm prioridade; se
+        // ainda não foram geocodificadas, cai nas do cadastro do candidato.
+        $candidatos = \App\Models\EmpresaCurriculo::with('candidato:id,latitude,longitude')
+            ->where('empresa_id', $empresaId)
+            ->where(function ($q) {
+                $q->whereNotNull('latitude')
+                  ->orWhereHas('candidato', fn($c) => $c->whereNotNull('latitude'));
+            })
             ->get()
-            ->map(fn($c) => [
-                'id'             => $c->id,
-                'nome'           => $c->user?->name,
-                'cargo_desejado' => $c->cargo_desejado,
-                'cidade'         => $c->cidade,
-                'estado'         => $c->estado,
-                'telefone'       => $c->telefone,
-                'origem'         => $c->envios->first()?->origem,
-                'latitude'       => (float) $c->latitude,
-                'longitude'      => (float) $c->longitude,
-            ]);
+            ->map(function ($c) {
+                $lat = $c->latitude ?? $c->candidato?->latitude;
+                $lng = $c->longitude ?? $c->candidato?->longitude;
+
+                if ($lat === null || $lng === null) {
+                    return null;
+                }
+
+                return [
+                    'id'             => $c->id,
+                    'candidato_id'   => $c->candidato_id,
+                    'nome'           => $c->nome,
+                    'cargo_desejado' => $c->cargo_desejado,
+                    'cidade'         => $c->cidade,
+                    'estado'         => $c->estado,
+                    'telefone'       => $c->telefone,
+                    'origem'         => $c->origem,
+                    'latitude'       => (float) $lat,
+                    'longitude'      => (float) $lng,
+                ];
+            })
+            ->filter()
+            ->values();
 
         return response()->json(['data' => $candidatos]);
     }
@@ -218,7 +241,7 @@ class EmpresaCandidatoRecebidoController extends Controller
 
     private function baseQuery(int $empresaId)
     {
-        return Envio::with(['candidato.user:id,name,email', 'candidato.franquia:id,nome', 'vaga:id,titulo,salario_min,salario_max', 'kanbanEtapa:id,nome', 'pareceres'])
+        return Envio::with(['candidato.user:id,name,email', 'candidato.franquia:id,nome', 'vaga:id,titulo,salario_min,salario_max,canal', 'kanbanEtapa:id,nome', 'pareceres'])
             ->whereHas('vaga', fn($q) => $q->where('empresa_id', $empresaId));
     }
 
@@ -240,8 +263,11 @@ class EmpresaCandidatoRecebidoController extends Controller
             'parecer_autor'     => $parecer?->autor,
             'observacao'        => $e->observacao,
             'salario_aprovado'  => $e->salario_aprovado,
+            'tipo_contrato'     => $e->tipo_contrato,
             'data_admissao'     => $e->data_admissao?->toDateString(),
             'data_saida'        => $e->data_saida?->toDateString(),
+            // salário da vaga: pré-preenche o campo ao aprovar (igual à franquia)
+            'vaga_salario'      => $e->vaga?->salario_max ?? $e->vaga?->salario_min,
             'created_at'        => $e->created_at,
             'candidato'         => $e->candidato ? [
                 'id'       => $e->candidato->id,
@@ -256,7 +282,10 @@ class EmpresaCandidatoRecebidoController extends Controller
                 'titulo'      => $e->vaga->titulo,
                 'salario_min' => $e->vaga->salario_min,
                 'salario_max' => $e->vaga->salario_max,
+                'canal'       => $e->vaga->canal,
             ] : null,
+            // Vaga conduzida pela agência: a empresa não emite parecer
+            'parecer_bloqueado' => $e->vaga?->canal === 'agencia',
         ];
     }
 }

@@ -35,12 +35,17 @@ class Empresa extends Model
         'franquia_id',
         'active',
         'logo_url',
+        'asaas_customer_id',
+        'asaas_subscription_id',
+        'plano_valor',
+        'assinatura_status',
     ];
 
     protected $casts = [
         'active'               => 'boolean',
         'prazo_vencimento_dias'=> 'integer',
         'reposicao_dias'       => 'integer',
+        'plano_valor'          => 'decimal:2',
         'latitude'             => 'float',
         'longitude'            => 'float',
     ];

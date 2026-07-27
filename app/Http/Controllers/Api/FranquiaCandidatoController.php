@@ -579,7 +579,8 @@ class FranquiaCandidatoController extends Controller
         // Permite vincular candidatos do banco que ainda nao tem curriculo anexado.
         $envio = Envio::firstOrCreate(
             ['candidato_id' => $candidato->id, 'vaga_id' => $request->vaga_id],
-            ['curriculo_id' => $curriculo?->id, 'status' => 'enviado']
+            // origem='franquia': a empresa recebeu este candidato pelo canal agência
+            ['curriculo_id' => $curriculo?->id, 'status' => 'enviado', 'origem' => 'franquia']
         );
 
         return response()->json([
@@ -663,6 +664,9 @@ class FranquiaCandidatoController extends Controller
             'dados'       => $validated['dados'] ?? null,
         ]);
 
+        // Teste informado no parecer aparece na tela "Testes" da empresa
+        app(\App\Services\SincronizacaoAgendamentosParecer::class)->doParecer($parecer);
+
         return response()->json([
             'message' => 'Parecer registrado.',
             'data'    => ['id' => $parecer->id, 'nota' => $parecer->nota],
@@ -685,6 +689,9 @@ class FranquiaCandidatoController extends Controller
             'texto' => $validated['texto'],
             'nota'  => $validated['nota'] ?? null,
         ], array_key_exists('dados', $validated) ? ['dados' => $validated['dados']] : []));
+
+        // Alteração do teste no parecer reflete na tela "Testes" da empresa
+        app(\App\Services\SincronizacaoAgendamentosParecer::class)->doParecer($parecer);
 
         return response()->json([
             'message' => 'Parecer atualizado com sucesso.',
@@ -818,7 +825,11 @@ class FranquiaCandidatoController extends Controller
             ->firstOrFail();
 
         // status sempre; demais campos apenas quando enviados pelo front
-        $envio->fill(['status' => $data['status']]);
+        $envio->fill([
+            'status' => $data['status'],
+            // Mesmo processo seletivo: reflete no painel da empresa
+            'status_empresa' => Envio::statusEmpresaPara($data['status']),
+        ]);
         foreach (['observacao', 'salario_aprovado', 'tipo_contrato', 'data_admissao', 'data_saida'] as $campo) {
             if (array_key_exists($campo, $data)) {
                 $envio->{$campo} = $data[$campo];

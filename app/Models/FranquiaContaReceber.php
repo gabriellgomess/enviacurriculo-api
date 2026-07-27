@@ -15,7 +15,7 @@ class FranquiaContaReceber extends Model
         'comissao_perc', 'comissao_valor', 'comissao_s_start_perc', 'comissao_s_start_valor',
         'valor_liquido', 'data_faturamento', 'data_vencimento', 'data_reposicao',
         'is_sstart', 'status',
-        'origem', 'parceiro_id', 'descricao', 'asaas_payment_id', 'asaas_subscription_id',
+        'origem', 'parceiro_id', 'empresa_id', 'descricao', 'asaas_payment_id', 'asaas_subscription_id',
     ];
 
     protected $casts = [

@@ -26,6 +26,9 @@ class EmpresaEntrevistaController extends Controller
             'consultor_nome' => $e->consultor_nome,
             'observacao'     => $e->observacao,
             'status'         => $e->status,
+            // Entrevistas vindas do parecer da franquia ficam sinalizadas
+            'origem'         => $e->parecer_id ? 'parecer' : 'empresa',
+            'parecer_id'     => $e->parecer_id,
             'candidato'      => $e->candidato ? [
                 'id'   => $e->candidato->id,
                 'nome' => $e->candidato->user?->name,
@@ -99,6 +102,10 @@ class EmpresaEntrevistaController extends Controller
         $data = $request->validate($this->rules());
         $entrevista->update($data);
 
+        // Se veio de um parecer, devolve data/local para lá
+        app(\App\Services\SincronizacaoAgendamentosParecer::class)
+            ->doEntrevista($entrevista->fresh());
+
         $entrevista->load(['candidato.user:id,name', 'vaga:id,titulo']);
 
         return response()->json($this->present($entrevista));
@@ -128,6 +135,11 @@ class EmpresaEntrevistaController extends Controller
     {
         $empresaId  = $this->tokenContextId($request);
         $entrevista = EmpresaEntrevista::where('empresa_id', $empresaId)->findOrFail($id);
+
+        // Limpa a informação no parecer de origem antes de remover o vínculo
+        app(\App\Services\SincronizacaoAgendamentosParecer::class)
+            ->aoExcluirEntrevista($entrevista);
+
         $entrevista->delete();
 
         return response()->noContent();

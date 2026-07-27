@@ -45,6 +45,10 @@ class VagaController extends Controller
             $query->where('tipo_contrato', $request->tipo_contrato);
         }
 
+        if ($request->filled('canal')) {
+            $query->where('canal', $request->canal);
+        }
+
         if ($request->filled('regime_trabalho')) {
             $query->where('regime_trabalho', $request->regime_trabalho);
         }

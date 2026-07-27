@@ -29,10 +29,16 @@ class CandidatoVagaController extends Controller
         if ($request->filled('search')) {
             $s = $request->search;
             $query->where(function ($q) use ($s) {
+                // Campos que o candidato enxerga em qualquer canal
                 $q->where('titulo', 'like', "%{$s}%")
                   ->orWhere('descricao', 'like', "%{$s}%")
                   ->orWhere('cidade', 'like', "%{$s}%")
-                  ->orWhere('codigo', 'like', "%{$s}%");
+                  // O código não é exibido em vagas de agência; deixá-lo
+                  // pesquisável permitiria confirmá-lo por tentativa.
+                  ->orWhere(function ($sub) use ($s) {
+                      $sub->where('codigo', 'like', "%{$s}%")
+                          ->where('canal', '!=', 'agencia');
+                  });
             });
         }
 
@@ -78,17 +84,78 @@ class CandidatoVagaController extends Controller
     }
 
     /**
+     * Campos que o candidato pode ver quando a vaga é divulgada pela AGÊNCIA
+     * (canal = 'agencia'). Além dos dados do anúncio, mantém os campos
+     * funcionais que a interface precisa (id, status, canal, flags).
+     *
+     * Vagas publicadas pela empresa via plataforma (canal 'plataforma' ou
+     * 'ambos') continuam exibindo todas as informações.
+     */
+    private const CAMPOS_VISIVEIS_AGENCIA = [
+        // informações permitidas do anúncio
+        'titulo', 'turno', 'tipo_contrato', 'descricao', 'beneficios',
+        'bairro', 'cidade', 'estado',
+        // funcionais (necessários para a tela e para se candidatar)
+        'id', 'status', 'canal', 'ja_aplicou', 'empresa_oculta', 'anunciante',
+    ];
+
+    /**
      * Em vagas de agência (ou com ocultar_empresa) o candidato não pode ver o
-     * nome/identificação da empresa contratante.
+     * nome/identificação da empresa contratante. Em vagas de agência também
+     * são omitidos os demais campos do anúncio (salário, requisitos, nível,
+     * código, endereço detalhado etc.).
      */
     private function ocultarEmpresaSeAgencia(Vaga $v): Vaga
     {
-        if (($v->canal === 'agencia' || $v->ocultar_empresa) && $v->empresa) {
+        $ehAgencia = $v->canal === 'agencia';
+
+        if (($ehAgencia || $v->ocultar_empresa) && $v->empresa) {
             $v->empresa->razao_social  = null;
             $v->empresa->nome_fantasia = null;
             $v->empresa->logo_url      = null;
+            if (array_key_exists('descricao', $v->empresa->getAttributes())) {
+                $v->empresa->descricao = null;
+            }
             $v->setAttribute('empresa_oculta', true);
         }
+
+        if ($ehAgencia) {
+            // A relação empresa sai por completo: mesmo anonimizada, o
+            // empresa_id permitiria identificar a contratante cruzando com
+            // GET /candidato/empresas/{id}.
+            $v->unsetRelation('empresa');
+
+            // Nome exibido ao candidato no lugar da empresa contratante.
+            $v->setAttribute('anunciante', 'Agência');
+
+            // Ocultações que a empresa configurou para o anúncio de agência.
+            // (empresa e salário já não aparecem na lista restrita acima.)
+            if ($v->ocultar_endereco_agencia) {
+                $v->setAttribute('bairro', null);
+                $v->setAttribute('cidade', null);
+                $v->setAttribute('estado', null);
+            }
+
+            // setVisible = whitelist real: cobre colunas, atributos anexados
+            // ($appends, ex.: 'modalidade'/'salario_oculto') e relações.
+            // Assim, campos novos no model não vazam por padrão.
+            $v->setVisible(self::CAMPOS_VISIVEIS_AGENCIA);
+
+            return $v;
+        }
+
+        // Vaga da plataforma: respeita o que a empresa escolheu ocultar
+        if ($v->ocultar_endereco) {
+            $v->setAttribute('cep', null);
+            $v->setAttribute('logradouro', null);
+            $v->setAttribute('numero', null);
+        }
+
+        if (!$v->exibir_salario) {
+            $v->setAttribute('salario_min', null);
+            $v->setAttribute('salario_max', null);
+        }
+
         return $v;
     }
 
@@ -124,6 +191,8 @@ class CandidatoVagaController extends Controller
                 'vaga_id'      => $vaga->id,
                 'curriculo_id' => $doc->id,
                 'mensagem'     => $request->mensagem,
+                // Candidatura espontânea pelo feed = canal plataforma
+                'origem'       => 'plataforma',
             ]);
 
             $saldoAntes = $c->creditos;

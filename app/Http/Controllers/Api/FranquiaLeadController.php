@@ -132,8 +132,8 @@ class FranquiaLeadController extends Controller
      */
     public function converter(FranquiaLead $lead)
     {
-        if ($lead->tipo === 'parceiro') {
-            return response()->json(['message' => 'Leads de parceiro não são convertidos em franquia.'], 422);
+        if (in_array($lead->tipo, ['parceiro', 'empresa'], true)) {
+            return response()->json(['message' => 'Este tipo de lead não é convertido em franquia.'], 422);
         }
 
         if ($lead->status === 'convertido') {
@@ -174,6 +174,8 @@ class FranquiaLeadController extends Controller
                 fn($q) => $q->where('status', $request->status))
             ->when($request->filled('tipo') && $request->tipo !== 'todos',
                 fn($q) => $q->where('tipo', $request->tipo))
+            ->when($request->filled('produto') && $request->produto !== 'todos',
+                fn($q) => $q->where('produto', $request->produto))
             ->when($request->filled('busca'), fn($q) => $q->where(function ($sub) use ($request) {
                 $sub->where('nome_completo', 'like', "%{$request->busca}%")
                     ->orWhere('email', 'like', "%{$request->busca}%")
@@ -204,8 +206,8 @@ class FranquiaLeadController extends Controller
         DB::transaction(function () use ($lead, $data, $oldStatus) {
             $lead->update($data);
 
-            // Leads de parceiro nunca geram/excluem franquia
-            if ($lead->tipo === 'parceiro') {
+            // Leads de parceiro/empresa nunca geram ou excluem franquia
+            if (in_array($lead->tipo, ['parceiro', 'empresa'], true)) {
                 return;
             }
 

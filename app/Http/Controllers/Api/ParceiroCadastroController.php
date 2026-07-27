@@ -19,6 +19,27 @@ class ParceiroCadastroController extends Controller
 {
     public function __construct(private readonly AsaasService $asaas) {}
 
+    // POST /api/parceiro/cadastro/verificar
+    // Pré-checagem de disponibilidade (CNPJ/e-mail) ANTES de qualquer cobrança.
+    public function verificarDisponibilidade(Request $request)
+    {
+        $data = $request->validate([
+            'cnpj'  => 'required|string|max:18',
+            'email' => 'required|email|max:255',
+        ]);
+
+        $conflitos = $this->conflitosCadastro($data['cnpj'], $data['email']);
+
+        if ($conflitos) {
+            return response()->json([
+                'message' => 'Dados já cadastrados.',
+                'errors'  => $conflitos,
+            ], 422);
+        }
+
+        return response()->json(['message' => 'ok']);
+    }
+
     // POST /api/parceiro/cadastro/pagamento
     // Cria a ASSINATURA recorrente mensal no Asaas e devolve a primeira cobrança.
     public function gerarPagamento(Request $request)
@@ -31,6 +52,15 @@ class ParceiroCadastroController extends Controller
             'valor'        => 'required|numeric',
             'billing_type' => 'required|in:PIX,BOLETO',
         ]);
+
+        // Barreira antes de cobrar: não cria assinatura se o cadastro fosse falhar
+        $conflitos = $this->conflitosCadastro($data['cnpj'], $data['email']);
+        if ($conflitos) {
+            return response()->json([
+                'message' => 'Dados já cadastrados.',
+                'errors'  => $conflitos,
+            ], 422);
+        }
 
         $cnpj = preg_replace('/\D/', '', $data['cnpj']);
 
@@ -68,6 +98,36 @@ class ParceiroCadastroController extends Controller
         }
 
         return response()->json(['status' => $status]);
+    }
+
+    /**
+     * Verifica se o CNPJ (comparado por dígitos) ou o e-mail já existem.
+     * Retorna um array de erros no formato do Laravel (ou vazio se disponível).
+     */
+    private function conflitosCadastro(string $cnpj, string $email): array
+    {
+        $cnpjDigits = preg_replace('/\D/', '', $cnpj);
+        $errors = [];
+
+        // IMPORTANTE: usar withTrashed() — as regras `unique:` do store()
+        // enxergam registros soft-deleted. Sem isso, a pré-checagem liberaria
+        // o pagamento e o cadastro falharia depois de cobrar.
+        if ($cnpjDigits) {
+            $cnpjEmUso = Parceiro::withTrashed()->whereRaw(
+                "REPLACE(REPLACE(REPLACE(cnpj, '.', ''), '/', ''), '-', '') = ?",
+                [$cnpjDigits]
+            )->exists();
+
+            if ($cnpjEmUso) {
+                $errors['cnpj'] = ['Já existe um parceiro cadastrado com este CNPJ.'];
+            }
+        }
+
+        if (User::withTrashed()->where('email', $email)->exists()) {
+            $errors['email'] = ['Este e-mail já está em uso.'];
+        }
+
+        return $errors;
     }
 
     // POST /api/parceiro/cadastro

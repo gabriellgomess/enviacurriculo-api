@@ -38,17 +38,26 @@ class AsaasWebhookController extends Controller
 
         // 1) Compra de créditos do candidato (cobrança avulsa)
         $compra = CreditoCompra::where('asaas_payment_id', $paymentId)->first();
-        if ($compra && in_array($evento, ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'])) {
-            app(CandidatoCreditoController::class)->confirmarPagamento($compra);
-            return response()->json(['message' => 'Processado (crédito candidato).']);
+        if ($compra) {
+            if (in_array($evento, ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'])) {
+                app(CandidatoCreditoController::class)->confirmarPagamento($compra);
+                return response()->json(['message' => 'Processado (crédito candidato).']);
+            }
+
+            // Ex.: PAYMENT_CREATED de compra de créditos — nada a fazer, mas o
+            // pagamento é conhecido: responder 2xx para o Asaas não reenviar.
+            return response()->json(['message' => 'Evento sem ação para esta compra.']);
         }
 
-        // 2) Assinatura recorrente de parceiro → gera/atualiza conta a receber
+        // 2) Assinatura recorrente (parceiro ou empresa) → conta a receber
         $subscriptionId = $request->input('payment.subscription');
         if ($subscriptionId) {
-            $processado = $this->processarAssinaturaParceiro($request, $evento, $paymentId, $subscriptionId);
-            if ($processado) {
+            if ($this->processarAssinaturaParceiro($request, $evento, $paymentId, $subscriptionId)) {
                 return response()->json(['message' => 'Processado (assinatura parceiro).']);
+            }
+
+            if ($this->processarAssinaturaEmpresa($request, $evento, $paymentId, $subscriptionId)) {
+                return response()->json(['message' => 'Processado (assinatura empresa).']);
             }
         }
 
@@ -91,6 +100,46 @@ class AsaasWebhookController extends Controller
         // Nunca "rebaixar" de pago para pendente
         if ($conta->status !== 'pago') {
             $conta->status = $statusConta;
+        }
+
+        $conta->save();
+
+        return true;
+    }
+
+    /**
+     * Mesma lógica do parceiro, para a mensalidade do plano da empresa
+     * (fluxo "quero ser empresa" — produtos Plataforma e Ambos).
+     */
+    private function processarAssinaturaEmpresa(Request $request, string $evento, string $paymentId, string $subscriptionId): bool
+    {
+        $empresa = \App\Models\Empresa::where('asaas_subscription_id', $subscriptionId)->first();
+        if (!$empresa) {
+            return false;
+        }
+
+        $valor      = round((float) $request->input('payment.value', $empresa->plano_valor ?? 0), 2);
+        $vencimento = $request->input('payment.dueDate') ?: now()->toDateString();
+        $statusNovo = in_array($evento, ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED']) ? 'pago' : 'pendente';
+
+        $conta = FranquiaContaReceber::firstOrNew(['asaas_payment_id' => $paymentId]);
+
+        $conta->fill([
+            'franquia_id'           => null,
+            'origem'                => 'empresa',
+            'empresa_id'            => $empresa->id,
+            'empresa_nome'          => $empresa->nome_fantasia ?? $empresa->razao_social,
+            'descricao'             => 'Mensalidade do plano ' . ($empresa->plano ?? '—'),
+            'asaas_subscription_id' => $subscriptionId,
+            'taxa_servico'          => 0,
+            'valor_bruto'           => $valor,
+            'valor_liquido'         => $valor,
+            'data_faturamento'      => $conta->data_faturamento ?? now()->toDateString(),
+            'data_vencimento'       => $vencimento,
+        ]);
+
+        if ($conta->status !== 'pago') {
+            $conta->status = $statusNovo;
         }
 
         $conta->save();

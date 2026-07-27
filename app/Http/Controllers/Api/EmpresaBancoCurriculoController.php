@@ -4,16 +4,50 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
+use App\Models\Candidato;
 use App\Models\CandidatoDocumento;
 use App\Models\Empresa;
 use App\Models\EmpresaCurriculo;
+use App\Models\User;
+use App\Models\UserContext;
+use App\Models\UserRole;
+use App\Services\GeocodeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class EmpresaBancoCurriculoController extends Controller
 {
     use HasTokenContext;
+
+    public function __construct(private readonly GeocodeService $geocoder) {}
+
+    /**
+     * Calcula as coordenadas do currículo para o Mapa de Candidatos.
+     * Best-effort: falha de geocodificação não impede salvar o currículo.
+     */
+    private function coordenadas(array $dados): array
+    {
+        if (empty($dados['cidade']) && empty($dados['bairro'])) {
+            return [];
+        }
+
+        try {
+            $coords = $this->geocoder->geocode(
+                $dados['rua']    ?? null,
+                $dados['numero'] ?? null,
+                $dados['bairro'] ?? null,
+                $dados['cidade'] ?? null,
+                $dados['estado'] ?? null,
+            );
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return $coords ? ['latitude' => $coords['latitude'], 'longitude' => $coords['longitude']] : [];
+    }
 
     public function index(Request $request)
     {
@@ -109,9 +143,32 @@ class EmpresaBancoCurriculoController extends Controller
                 ->all();
         }
 
+        $coords = $this->coordenadas($data);
+
+        // Currículo novo também entra no BANCO OFICIAL da EnviaCurrículo.
+        // Se o candidato já existir lá, apenas vincula (não duplica).
+        $candidatoId = $this->publicarNoBancoOficial($data, $coords);
+
+        // (empresa_id, candidato_id) é único: evita o 500 do índice quando a
+        // empresa insiste em cadastrar alguém que já está no banco dela.
+        if ($candidatoId) {
+            $jaExiste = EmpresaCurriculo::where('empresa_id', $empresaId)
+                ->where('candidato_id', $candidatoId)
+                ->exists();
+
+            if ($jaExiste) {
+                return response()->json([
+                    'message' => 'Este candidato já está no seu banco de currículos.',
+                    'errors'  => ['nome' => ['Este candidato já está no seu banco de currículos.']],
+                ], 422);
+            }
+        }
+
         $curriculo = EmpresaCurriculo::create([
             ...collect($data)->except(['arquivo', 'arquivo_cnh', 'arquivo_ctps', 'arquivos_diploma', 'origem', 'status'])->all(),
             ...$extra,
+            ...$coords,
+            'candidato_id' => $candidatoId,
         ]);
 
         return response()->json(['data' => $this->payload($curriculo)], 201);
@@ -129,24 +186,47 @@ class EmpresaBancoCurriculoController extends Controller
             ], 402);
         }
 
-        $data = $request->validate(['curriculo_id' => 'required|integer|exists:candidato_documentos,id']);
+        // Aceita copiar por documento (fluxo antigo) ou direto pelo candidato
+        // encontrado na checagem de duplicidade no banco oficial.
+        $data = $request->validate([
+            'curriculo_id' => 'required_without:candidato_id|integer|exists:candidato_documentos,id',
+            'candidato_id' => 'required_without:curriculo_id|integer|exists:candidatos,id',
+        ]);
 
-        $doc = CandidatoDocumento::with('candidato.user')->findOrFail($data['curriculo_id']);
-        $candidato = $doc->candidato;
+        if (!empty($data['curriculo_id'])) {
+            $doc       = CandidatoDocumento::with('candidato.user')->findOrFail($data['curriculo_id']);
+            $candidato = $doc->candidato;
+        } else {
+            $doc       = null;
+            $candidato = Candidato::with('user')->findOrFail($data['candidato_id']);
+            // Sem documento informado, leva o currículo ativo do candidato
+            $doc = $candidato->documentos()->where('ativo', true)->first()
+                ?? $candidato->documentos()->latest()->first();
+        }
 
         $curriculo = EmpresaCurriculo::updateOrCreate(
             ['empresa_id' => $empresaId, 'candidato_id' => $candidato->id],
             [
-                'nome'           => $candidato->user?->name ?? 'Candidato',
-                'email'          => $candidato->user?->email,
-                'telefone'       => $candidato->telefone,
-                'cpf'            => $candidato->cpf,
-                'cargo_desejado' => $candidato->cargo_desejado,
-                'cidade'         => $candidato->cidade,
-                'estado'         => $candidato->estado,
-                'origem'         => 'copia_base',
-                'arquivo_path'   => $doc->arquivo_path,
-                'arquivo_nome'   => $doc->arquivo_nome,
+                'nome'                     => $candidato->user?->name ?? 'Candidato',
+                'email'                    => $candidato->user?->email,
+                'telefone'                 => $candidato->telefone,
+                'cpf'                      => $candidato->cpf,
+                'cargo_desejado'           => $candidato->cargo_desejado,
+                'cargos_interesse'         => $candidato->cargos_interesse,
+                'experiencia_profissional' => $candidato->experiencia_profissional,
+                'educacao'                 => $candidato->educacao,
+                'habilidades'              => $candidato->habilidades,
+                'cidade'                   => $candidato->cidade,
+                'estado'                   => $candidato->estado,
+                'bairro'                   => $candidato->bairro,
+                'cep'                      => $candidato->cep,
+                'rua'                      => $candidato->rua,
+                'numero'                   => $candidato->numero,
+                'latitude'                 => $candidato->latitude,
+                'longitude'                => $candidato->longitude,
+                'origem'                   => 'copia_base',
+                'arquivo_path'             => $doc?->arquivo_path,
+                'arquivo_nome'             => $doc?->arquivo_nome,
             ],
         );
 
@@ -178,7 +258,18 @@ class EmpresaBancoCurriculoController extends Controller
         ]);
 
         $curriculo = EmpresaCurriculo::where('empresa_id', $empresaId)->findOrFail($id);
-        $curriculo->update($data);
+
+        // Reposiciona no mapa se o endereço mudou
+        $enderecoMudou = collect(['cidade', 'estado', 'bairro'])
+            ->contains(fn($campo) => array_key_exists($campo, $data) && $data[$campo] !== $curriculo->$campo);
+
+        $curriculo->update([
+            ...$data,
+            ...($enderecoMudou ? $this->coordenadas([...$curriculo->only(['rua', 'numero']), ...$data]) : []),
+        ]);
+
+        // Complementa o cadastro oficial apenas onde ele está vazio
+        $this->enriquecerBancoOficial($curriculo, $data);
 
         return response()->json(['message' => 'Currículo atualizado.']);
     }
@@ -221,31 +312,225 @@ class EmpresaBancoCurriculoController extends Controller
         ]);
     }
 
+    /**
+     * Enriquece o candidato no BANCO OFICIAL com dados que a empresa preencheu,
+     * SOMENTE nos campos que estão vazios no registro oficial.
+     *
+     * Decisão de produto: a base oficial é compartilhada (outras empresas,
+     * franquias e o próprio candidato, que edita o perfil dele). Por isso a
+     * empresa complementa lacunas, mas nunca sobrescreve dado já existente.
+     */
+    private function enriquecerBancoOficial(EmpresaCurriculo $curriculo, array $data): void
+    {
+        if (!$curriculo->candidato_id) {
+            return;
+        }
+
+        $candidato = Candidato::find($curriculo->candidato_id);
+        if (!$candidato) {
+            return;
+        }
+
+        // origem no currículo da empresa → campo no cadastro oficial
+        $mapa = [
+            'telefone'                 => 'telefone',
+            'cpf'                      => 'cpf',
+            'cep'                      => 'cep',
+            'rua'                      => 'rua',
+            'numero'                   => 'numero',
+            'complemento'              => 'complemento',
+            'bairro'                   => 'bairro',
+            'cidade'                   => 'cidade',
+            'estado'                   => 'estado',
+            'tipo_cnh'                 => 'tipo_cnh',
+            'cargo_desejado'           => 'cargo_desejado',
+            'cargos_interesse'         => 'cargos_interesse',
+            'informacoes_pessoais'     => 'apresentacao',
+            'experiencia_profissional' => 'experiencia_profissional',
+            'educacao'                 => 'educacao',
+            'habilidades'              => 'habilidades',
+            'idiomas'                  => 'idiomas',
+            'informacoes_adicionais'   => 'informacoes_adicionais',
+        ];
+
+        $preencher = [];
+
+        foreach ($mapa as $campoEmpresa => $campoOficial) {
+            $novo = $data[$campoEmpresa] ?? null;
+
+            // Nada a acrescentar
+            if ($novo === null || $novo === '' || $novo === []) {
+                continue;
+            }
+
+            // Já preenchido no oficial → preserva (nunca sobrescreve)
+            $atual = $candidato->$campoOficial;
+            if ($atual !== null && $atual !== '' && $atual !== []) {
+                continue;
+            }
+
+            $preencher[$campoOficial] = $novo;
+        }
+
+        if ($preencher) {
+            $candidato->update($preencher);
+        }
+    }
+
+    /**
+     * Publica no BANCO OFICIAL (candidatos) um currículo cadastrado pela
+     * empresa. Se já existir candidato com o mesmo e-mail/CPF/telefone, apenas
+     * devolve o id existente — nunca duplica nem sobrescreve o registro oficial.
+     *
+     * Retorna o candidato_id para vincular ao currículo da empresa.
+     */
+    private function publicarNoBancoOficial(array $data, array $coords = []): ?int
+    {
+        $existente = Candidato::where(function ($q) use ($data) {
+            if (!empty($data['cpf'])) {
+                $q->orWhere('cpf', $data['cpf']);
+            }
+            if (!empty($data['telefone'])) {
+                $digits = preg_replace('/\D/', '', $data['telefone']);
+                if ($digits) {
+                    $q->orWhereRaw(
+                        "REPLACE(REPLACE(REPLACE(REPLACE(telefone,'(',''),')',''),'-',''),' ','') = ?",
+                        [$digits]
+                    );
+                }
+            }
+            if (!empty($data['email'])) {
+                $email = $data['email'];
+                $q->orWhereHas('user', fn($u) => $u->where('email', $email));
+            }
+        })->first();
+
+        if ($existente) {
+            return $existente->id;
+        }
+
+        // E-mail é opcional no banco de currículos; sem ele, gera um interno
+        // (mesmo padrão do banco de currículos do admin/franquia).
+        if (!empty($data['email']) && User::where('email', $data['email'])->exists()) {
+            return null; // e-mail já usado por outro tipo de usuário — não cria
+        }
+
+        return DB::transaction(function () use ($data, $coords) {
+            $user = User::create([
+                'name'     => $data['nome'],
+                'email'    => $data['email'] ?? ('cv_' . Str::uuid() . '@banco.local'),
+                'phone'    => $data['telefone'] ?? null,
+                'password' => Hash::make(Str::random(40)),
+                'active'   => ($data['status'] ?? 'ativo') === 'ativo',
+            ]);
+
+            UserRole::firstOrCreate(['user_id' => $user->id, 'role' => 'candidato']);
+
+            $candidato = Candidato::create([
+                'user_id'                  => $user->id,
+                'franquia_id'              => null,
+                'telefone'                 => $data['telefone'] ?? null,
+                'cpf'                      => $data['cpf'] ?? null,
+                'cep'                      => $data['cep'] ?? null,
+                'rua'                      => $data['rua'] ?? null,
+                'numero'                   => $data['numero'] ?? null,
+                'complemento'              => $data['complemento'] ?? null,
+                'bairro'                   => $data['bairro'] ?? null,
+                'cidade'                   => $data['cidade'] ?? null,
+                'estado'                   => $data['estado'] ?? null,
+                'tipo_cnh'                 => $data['tipo_cnh'] ?? null,
+                'cargo_desejado'           => $data['cargo_desejado'] ?? null,
+                'cargos_interesse'         => $data['cargos_interesse'] ?? null,
+                'apresentacao'             => $data['informacoes_pessoais'] ?? null,
+                'experiencia_profissional' => $data['experiencia_profissional'] ?? null,
+                'educacao'                 => $data['educacao'] ?? null,
+                'habilidades'              => $data['habilidades'] ?? null,
+                'idiomas'                  => $data['idiomas'] ?? null,
+                'informacoes_adicionais'   => $data['informacoes_adicionais'] ?? null,
+                'active'                   => ($data['status'] ?? 'ativo') === 'ativo',
+                ...$coords,
+            ]);
+
+            UserContext::firstOrCreate([
+                'user_id'    => $user->id,
+                'role'       => 'candidato',
+                'context_id' => $candidato->id,
+            ]);
+
+            return $candidato->id;
+        });
+    }
+
+    /**
+     * Verifica se o candidato já existe no BANCO OFICIAL da EnviaCurrículo
+     * (tabela candidatos) antes da empresa cadastrar um currículo novo.
+     *
+     * Retorna também se a empresa já possui esse candidato no próprio banco,
+     * para a interface não oferecer uma cópia duplicada.
+     */
     public function duplicata(Request $request)
     {
         $empresaId = $this->tokenContextId($request);
 
         $request->validate([
-            'nome'  => 'nullable|string|max:255',
-            'email' => 'nullable|email',
-            'cpf'   => 'nullable|string|max:14',
+            'nome'     => 'nullable|string|max:255',
+            'email'    => 'nullable|email',
+            'telefone' => 'nullable|string|max:20',
+            'cpf'      => 'nullable|string|max:14',
         ]);
 
-        if (!$request->filled('email') && !$request->filled('cpf') && !$request->filled('nome')) {
+        if (!$request->filled('email') && !$request->filled('cpf')
+            && !$request->filled('nome') && !$request->filled('telefone')) {
             return response()->json(['duplicado' => false]);
         }
 
-        $existente = EmpresaCurriculo::where('empresa_id', $empresaId)
+        $oficial = Candidato::with('user:id,name,email')
             ->where(function ($q) use ($request) {
-                if ($request->filled('email')) $q->orWhere('email', $request->email);
-                if ($request->filled('cpf'))   $q->orWhere('cpf', $request->cpf);
-                if ($request->filled('nome'))  $q->orWhere('nome', $request->nome);
+                if ($request->filled('cpf')) {
+                    $q->orWhere('cpf', $request->cpf);
+                }
+                if ($request->filled('telefone')) {
+                    $digits = preg_replace('/\D/', '', $request->telefone);
+                    if ($digits) {
+                        $q->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(REPLACE(telefone,'(',''),')',''),'-',''),' ','') = ?",
+                            [$digits]
+                        );
+                    }
+                }
+                if ($request->filled('email')) {
+                    $email = $request->email;
+                    $q->orWhereHas('user', fn($u) => $u->where('email', $email));
+                }
+                if ($request->filled('nome')) {
+                    $nome = $request->nome;
+                    $q->orWhereHas('user', fn($u) => $u->where('name', 'like', "%{$nome}%"));
+                }
             })
             ->first();
 
+        if (!$oficial) {
+            return response()->json(['duplicado' => false]);
+        }
+
+        // A empresa já tem esse candidato no banco dela?
+        $jaNoBanco = EmpresaCurriculo::where('empresa_id', $empresaId)
+            ->where('candidato_id', $oficial->id)
+            ->first();
+
         return response()->json([
-            'duplicado'    => (bool) $existente,
-            'curriculo_id' => $existente?->id,
+            'duplicado'    => true,
+            'candidato'    => [
+                'id'             => $oficial->id,
+                'nome'           => $oficial->user?->name,
+                'email'          => $oficial->user?->email,
+                'telefone'       => $oficial->telefone,
+                'cidade'         => $oficial->cidade,
+                'estado'         => $oficial->estado,
+                'cargo_desejado' => $oficial->cargo_desejado,
+            ],
+            'ja_no_banco'  => (bool) $jaNoBanco,
+            'curriculo_id' => $jaNoBanco?->id,
         ]);
     }
 

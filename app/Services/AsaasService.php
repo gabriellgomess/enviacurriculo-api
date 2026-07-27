@@ -3,17 +3,15 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 
 /**
  * Integração com o gateway de pagamento Asaas (https://www.asaas.com).
  *
- * Enquanto ASAAS_API_KEY não estiver configurada no .env, todos os métodos
- * operam em modo MOCK: geram um PIX fake e confirmam o pagamento sozinhos
- * alguns segundos depois (ver consultarStatus()). Isso permite validar a
- * tela de "Minha Carteira" ponta a ponta sem uma conta Asaas real.
+ * Integração REAL — exige ASAAS_API_KEY configurada no .env. Não há modo
+ * mock: sem a chave, as operações falham explicitamente, em vez de simular
+ * um pagamento (o que creditaria o candidato sem recebimento).
  *
- * Para ativar a integração de verdade, ver ASAAS_SETUP.md na raiz do projeto.
+ * Configuração: ver ASAAS_SETUP.md em api/.
  */
 class AsaasService
 {
@@ -35,12 +33,12 @@ class AsaasService
      * Cria uma cobrança PIX e retorna os dados do QR Code.
      *
      * @param array{nome:string, cpf:string, email:?string, valor:float, descricao:string} $dados
-     * @return array{payment_id:string, qr_code:string, qr_code_image:string, expiration_date:string, mock:bool}
+     * @return array{payment_id:string, qr_code:string, qr_code_image:string, expiration_date:string}
      */
     public function criarCobrancaPix(array $dados): array
     {
         if (!$this->isConfigured()) {
-            return $this->mockCobrancaPix($dados);
+            throw new \RuntimeException('Gateway de pagamento (Asaas) não configurado.');
         }
 
         $cliente = $this->buscarOuCriarCliente($dados);
@@ -67,11 +65,9 @@ class AsaasService
             'payment_id'      => $pagamento['id'],
             'qr_code'         => $qrCode['payload'] ?? '',
             // Asaas devolve o base64 "cru" (sem o prefixo data:); montamos a
-            // data URI aqui pra o frontend só usar <img src={qrCodeImage}>
-            // direto, sem precisar saber se veio do modo mock ou real.
+            // data URI aqui pra o frontend só usar <img src={qrCodeImage}> direto.
             'qr_code_image'   => $imagemBase64 ? "data:image/png;base64,{$imagemBase64}" : '',
             'expiration_date' => $qrCode['expirationDate'] ?? now()->addHour()->toIso8601String(),
-            'mock'            => false,
         ];
     }
 
@@ -79,14 +75,16 @@ class AsaasService
      * Consulta o status atual de um pagamento.
      * Retorna um dos status do Asaas: PENDING, RECEIVED, CONFIRMED, OVERDUE, etc.
      *
-     * Em modo mock, confirma automaticamente passados ~8s da criação — o
-     * chamador (CandidatoCreditoController::statusCompra) informa esse tempo
-     * decorrido via $segundosDesdeACriacao.
+     * Sem a chave configurada, devolve PENDING — nunca confirma sozinho, para
+     * não creditar sem pagamento real.
+     *
+     * O parâmetro $segundosDesdeACriacao é mantido por compatibilidade com os
+     * chamadores existentes e é ignorado na integração real.
      */
     public function consultarStatus(string $paymentId, int $segundosDesdeACriacao = 0): string
     {
         if (!$this->isConfigured()) {
-            return $segundosDesdeACriacao >= 8 ? 'CONFIRMED' : 'PENDING';
+            return 'PENDING';
         }
 
         $res = Http::withHeaders(['access_token' => $this->apiKey])
@@ -194,80 +192,5 @@ class AsaasService
             ])
             ->throw()
             ->json();
-    }
-
-    private function mockCobrancaPix(array $dados): array
-    {
-        $payload = '00020126580014BR.GOV.BCB.PIX0136mock-pix-key-em-desenvolvimento52040000530398654'
-            . str_pad((string) round($dados['valor'] * 100), 4, '0', STR_PAD_LEFT)
-            . '5802BR5913EnviaCurriculo6009Sao Paulo62070503***6304MOCK';
-
-        return [
-            'payment_id'      => 'mock_' . Str::random(24),
-            'qr_code'         => $payload,
-            'qr_code_image'   => $this->gerarImagemQrMock($payload),
-            'expiration_date' => now()->addHour()->toIso8601String(),
-            'mock'            => true,
-        ];
-    }
-
-    /**
-     * Gera um SVG (data URI) com um padrão visual parecido com um QR Code,
-     * só para representar visualmente o PIX de teste — não é um QR Code
-     * real/escaneável. Determinístico a partir do payload, então o mesmo
-     * PIX sempre gera o mesmo desenho.
-     *
-     * Evitamos gerar um PNG na mão (fácil de corromper) e não dependemos da
-     * extensão GD (nem sempre disponível) — SVG é só texto, sempre válido.
-     */
-    private function gerarImagemQrMock(string $payload): string
-    {
-        $modulos = 21; // mesmo tamanho de um QR versão 1
-        $tamanhoModulo = 10;
-        $lado = $modulos * $tamanhoModulo;
-
-        $seed = crc32($payload);
-        $bit = fn (int $x, int $y): bool => (bool) (crc32("{$seed}:{$x}:{$y}") & 1);
-
-        $finder = function (int $ox, int $oy) use ($tamanhoModulo): array {
-            // anel externo preto 7x7, miolo branco 5x5, centro preto 3x3
-            return [
-                ['x' => $ox, 'y' => $oy, 'w' => 7 * $tamanhoModulo, 'h' => 7 * $tamanhoModulo, 'fill' => '#000'],
-                ['x' => $ox + $tamanhoModulo, 'y' => $oy + $tamanhoModulo, 'w' => 5 * $tamanhoModulo, 'h' => 5 * $tamanhoModulo, 'fill' => '#fff'],
-                ['x' => $ox + 2 * $tamanhoModulo, 'y' => $oy + 2 * $tamanhoModulo, 'w' => 3 * $tamanhoModulo, 'h' => 3 * $tamanhoModulo, 'fill' => '#000'],
-            ];
-        };
-
-        $rects = [];
-        for ($x = 0; $x < $modulos; $x++) {
-            for ($y = 0; $y < $modulos; $y++) {
-                $dentroDeUmFinder = ($x < 8 && $y < 8) || ($x >= $modulos - 8 && $y < 8) || ($x < 8 && $y >= $modulos - 8);
-                if ($dentroDeUmFinder) {
-                    continue;
-                }
-                if ($bit($x, $y)) {
-                    $rects[] = ['x' => $x * $tamanhoModulo, 'y' => $y * $tamanhoModulo, 'w' => $tamanhoModulo, 'h' => $tamanhoModulo, 'fill' => '#000'];
-                }
-            }
-        }
-
-        $rects = [
-            ...$rects,
-            ...$finder(0, 0),
-            ...$finder(($modulos - 7) * $tamanhoModulo, 0),
-            ...$finder(0, ($modulos - 7) * $tamanhoModulo),
-        ];
-
-        $svgRects = implode('', array_map(
-            fn($r) => "<rect x=\"{$r['x']}\" y=\"{$r['y']}\" width=\"{$r['w']}\" height=\"{$r['h']}\" fill=\"{$r['fill']}\"/>",
-            $rects
-        ));
-
-        $svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{$lado}\" height=\"{$lado}\" viewBox=\"0 0 {$lado} {$lado}\">"
-            . "<rect width=\"{$lado}\" height=\"{$lado}\" fill=\"#fff\"/>"
-            . $svgRects
-            . "</svg>";
-
-        return 'data:image/svg+xml;base64,' . base64_encode($svg);
     }
 }

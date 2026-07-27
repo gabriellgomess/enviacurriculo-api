@@ -113,15 +113,18 @@ class FranquiaVagaController extends Controller
         $items = $vagas->getCollection()->map(fn($v) => [
             'id'                => $v->id,
             'titulo'            => $v->titulo,
-            'empresa'           => ['id' => $v->empresa_id, 'razao_social' => $v->empresa?->razao_social ?? $v->empresa?->nome_fantasia ?? 'Empresa não informada'],
-            'cidade'            => $v->cidade,
-            'estado'            => $v->estado,
-            'bairro'            => $v->bairro,
+            // A empresa pode ocultar dados da vaga para a agência (ocultar_*_agencia)
+            'empresa'           => $v->ocultar_empresa_agencia
+                ? ['id' => null, 'razao_social' => 'Empresa confidencial']
+                : ['id' => $v->empresa_id, 'razao_social' => $v->empresa?->razao_social ?? $v->empresa?->nome_fantasia ?? 'Empresa não informada'],
+            'cidade'            => $v->ocultar_endereco_agencia ? null : $v->cidade,
+            'estado'            => $v->ocultar_endereco_agencia ? null : $v->estado,
+            'bairro'            => $v->ocultar_endereco_agencia ? null : $v->bairro,
             'modalidade'        => $v->regime_trabalho,
             'tipo_contrato'     => $v->tipo_contrato,
-            'salario_min'       => $v->salario_min,
-            'salario_max'       => $v->salario_max,
-            'salario_oculto'    => !$v->exibir_salario,
+            'salario_min'       => $v->ocultar_salario_agencia ? null : $v->salario_min,
+            'salario_max'       => $v->ocultar_salario_agencia ? null : $v->salario_max,
+            'salario_oculto'    => $v->ocultar_salario_agencia || !$v->exibir_salario,
             'horario_trabalho'  => $v->horario_trabalho,
             'turno'             => $v->turno,
             'carga_horaria'     => $v->carga_horaria,
@@ -215,6 +218,9 @@ class FranquiaVagaController extends Controller
             'codigo'          => $this->gerarCodigo(),
             'franquia_id'     => $franquiaId,
             'empresa_id'      => $empresa->id,
+            // Vaga aberta pela franquia = produto Agência. Aparece no painel da
+            // empresa identificada como tal, e o parecer fica a cargo da franquia.
+            'canal'           => 'agencia',
             'titulo'          => $validated['titulo'],
             'descricao'       => $validated['descricao'] ?? null,
             'requisitos'      => $validated['requisitos'] ?? null,
@@ -317,20 +323,21 @@ class FranquiaVagaController extends Controller
             'titulo'            => $vaga->titulo,
             'descricao'         => $vaga->descricao,
             'requisitos'        => $vaga->requisitos,
-            'empresa'           => $vaga->empresa,
-            'cidade'            => $vaga->cidade,
-            'estado'            => $vaga->estado,
-            'bairro'            => $vaga->bairro,
-            'cep'               => $vaga->cep,
-            'logradouro'        => $vaga->logradouro,
-            'numero'            => $vaga->numero,
+            // Respeita as ocultações que a empresa definiu para a agência
+            'empresa'           => $vaga->ocultar_empresa_agencia ? null : $vaga->empresa,
+            'cidade'            => $vaga->ocultar_endereco_agencia ? null : $vaga->cidade,
+            'estado'            => $vaga->ocultar_endereco_agencia ? null : $vaga->estado,
+            'bairro'            => $vaga->ocultar_endereco_agencia ? null : $vaga->bairro,
+            'cep'               => $vaga->ocultar_endereco_agencia ? null : $vaga->cep,
+            'logradouro'        => $vaga->ocultar_endereco_agencia ? null : $vaga->logradouro,
+            'numero'            => $vaga->ocultar_endereco_agencia ? null : $vaga->numero,
             'nivel_vaga_id'     => $vaga->nivel_vaga_id,
             'taxa_servico'      => $vaga->taxa_servico,
             'modalidade'        => $vaga->regime_trabalho,
             'tipo_contrato'     => $vaga->tipo_contrato,
-            'salario_min'       => $vaga->salario_min,
-            'salario_max'       => $vaga->salario_max,
-            'salario_oculto'    => !$vaga->exibir_salario,
+            'salario_min'       => $vaga->ocultar_salario_agencia ? null : $vaga->salario_min,
+            'salario_max'       => $vaga->ocultar_salario_agencia ? null : $vaga->salario_max,
+            'salario_oculto'    => $vaga->ocultar_salario_agencia || !$vaga->exibir_salario,
             'vagas_disponiveis' => $vaga->quantidade_vagas,
             'total_candidatos'  => $vaga->total_candidatos,
             'ativa'             => $vaga->status === 'publicada',
@@ -486,7 +493,8 @@ class FranquiaVagaController extends Controller
         // Permite vincular candidatos do banco que ainda nao tem curriculo anexado.
         $envio = Envio::firstOrCreate(
             ['candidato_id' => $candidato->id, 'vaga_id' => $vaga->id],
-            ['curriculo_id' => $curriculo?->id, 'status' => 'enviado']
+            // origem='franquia': a empresa recebeu este candidato pelo canal agência
+            ['curriculo_id' => $curriculo?->id, 'status' => 'enviado', 'origem' => 'franquia']
         );
 
         return response()->json([

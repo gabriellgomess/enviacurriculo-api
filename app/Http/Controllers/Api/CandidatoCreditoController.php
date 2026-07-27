@@ -70,25 +70,33 @@ class CandidatoCreditoController extends Controller
         $pacote = $data['pacote_id'] ? CreditoPacote::find($data['pacote_id']) : null;
         $valor  = $pacote?->preco ?? round($data['quantidade'] * 0.99, 2);
 
+        // A cobrança é criada ANTES de persistir a compra: se o gateway falhar,
+        // não fica um registro "pendente" órfão que nunca será pago.
+        try {
+            $pix = $this->asaas->criarCobrancaPix([
+                'nome'      => $data['nome'],
+                'cpf'       => $cpf,
+                'email'     => $request->user()->email,
+                'valor'     => $valor,
+                'descricao' => "Compra de {$data['quantidade']} créditos — Envia Currículo",
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'message' => 'Não foi possível gerar o PIX no momento. '
+                    . 'Verifique se o CPF informado é válido e tente novamente.',
+            ], 502);
+        }
+
         $compra = CreditoCompra::create([
-            'candidato_id' => $candidato->id,
-            'pacote_id'    => $pacote?->id,
-            'quantidade'   => $data['quantidade'],
-            'valor'        => $valor,
-            'cpf'          => $cpf,
-            'nome'         => $data['nome'],
-            'status'       => 'pendente',
-        ]);
-
-        $pix = $this->asaas->criarCobrancaPix([
-            'nome'      => $data['nome'],
-            'cpf'       => $cpf,
-            'email'     => $request->user()->email,
-            'valor'     => $valor,
-            'descricao' => "Compra de {$data['quantidade']} créditos — Envia Currículo",
-        ]);
-
-        $compra->update([
+            'candidato_id'     => $candidato->id,
+            'pacote_id'        => $pacote?->id,
+            'quantidade'       => $data['quantidade'],
+            'valor'            => $valor,
+            'cpf'              => $cpf,
+            'nome'             => $data['nome'],
+            'status'           => 'pendente',
             'asaas_payment_id' => $pix['payment_id'],
             'qr_code'          => $pix['qr_code'],
             'qr_code_image'    => $pix['qr_code_image'],
@@ -112,14 +120,20 @@ class CandidatoCreditoController extends Controller
         $candidato = $this->candidatoDoUsuario();
         $compra    = CreditoCompra::where('candidato_id', $candidato->id)->findOrFail($id);
 
-        if ($compra->status === 'pendente') {
-            $status = $this->asaas->consultarStatus(
-                $compra->asaas_payment_id,
-                $compra->created_at->diffInSeconds(now())
-            );
+        if ($compra->status === 'pendente' && $compra->asaas_payment_id) {
+            try {
+                $status = $this->asaas->consultarStatus(
+                    $compra->asaas_payment_id,
+                    $compra->created_at->diffInSeconds(now())
+                );
 
-            if (in_array($status, ['RECEIVED', 'CONFIRMED'])) {
-                $this->confirmarPagamento($compra);
+                if (in_array($status, ['RECEIVED', 'CONFIRMED'])) {
+                    $this->confirmarPagamento($compra);
+                }
+            } catch (\Throwable $e) {
+                // Instabilidade do gateway não deve quebrar o polling do frontend;
+                // a confirmação também chega pelo webhook.
+                report($e);
             }
         }
 

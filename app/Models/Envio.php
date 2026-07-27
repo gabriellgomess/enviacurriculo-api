@@ -32,6 +32,40 @@ class Envio extends Model
         'data_saida'       => 'date:Y-m-d',
     ];
 
+    /**
+     * O processo seletivo é o MESMO registro para a franquia e para a empresa,
+     * mas cada painel tem seu vocabulário de status:
+     *
+     *   envios.status         → usado pela franquia e visto pelo candidato
+     *   envios.status_empresa → usado pelo painel da empresa
+     *
+     * Os dois precisam andar juntos: alteração em um lado reflete no outro.
+     * Os métodos abaixo concentram essa tradução para não haver duas regras
+     * divergentes espalhadas pelos controllers.
+     */
+
+    /** Status da franquia → status equivalente no painel da empresa. */
+    public static function statusEmpresaPara(string $status): string
+    {
+        return match ($status) {
+            'enviado', 'visualizado' => 'pendente',
+            'em_entrevista'          => 'em_processo',
+            default                  => $status, // em_processo, pendente, aprovado, reprovado, desistiu, reposicao
+        };
+    }
+
+    /** Status da empresa → status equivalente para franquia/candidato. */
+    public static function statusFranquiaPara(string $statusEmpresa, ?string $statusAtual = null): string
+    {
+        return match ($statusEmpresa) {
+            // "pendente" na empresa não deve rebaixar um envio já em andamento
+            'pendente' => in_array($statusAtual, ['enviado', 'visualizado'], true)
+                ? $statusAtual
+                : 'pendente',
+            default    => $statusEmpresa,
+        };
+    }
+
     public function kanbanEtapa()
     {
         return $this->belongsTo(KanbanEtapa::class);

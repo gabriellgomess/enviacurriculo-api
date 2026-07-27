@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Candidato;
 use App\Models\CandidatoDocumento;
 use App\Models\User;
+use App\Models\UserContext;
+use App\Models\UserRole;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -125,13 +127,18 @@ class CandidatoController extends Controller
             return response()->json(['message' => 'Já existe um usuário com este e-mail.'], 422);
         }
 
-        $candidato = DB::transaction(function () use ($data, $request) {
+        $ativo = ($data['status'] ?? 'ativo') === 'ativo';
+
+        $candidato = DB::transaction(function () use ($data, $request, $ativo) {
             $user = User::create([
                 'name'     => $data['nome'],
                 'email'    => $data['email'] ?? ('cv_' . Str::uuid() . '@banco.local'),
                 'password' => Hash::make(Str::random(40)),
-                'active'   => false,
+                'active'   => $ativo,
             ]);
+
+            // Papel de candidato para o usuário conseguir acessar o painel
+            UserRole::firstOrCreate(['user_id' => $user->id, 'role' => 'candidato']);
 
             $cargos = $data['cargos_interesse'] ?? null;
 
@@ -157,6 +164,13 @@ class CandidatoController extends Controller
                 'habilidades'              => $data['habilidades'] ?? null,
                 'idiomas'                  => $data['idiomas'] ?? null,
                 'informacoes_adicionais'   => $data['informacoes_adicionais'] ?? null,
+            ]);
+
+            // Contexto de acesso ao painel do candidato
+            UserContext::firstOrCreate([
+                'user_id'    => $user->id,
+                'role'       => 'candidato',
+                'context_id' => $candidato->id,
             ]);
 
             $uploads = ['arquivo' => 'curriculo', 'arquivo_cnh' => 'cnh', 'arquivo_ctps' => 'ctps'];
@@ -248,7 +262,17 @@ class CandidatoController extends Controller
             $userUpdate = [];
             if (isset($validated['name']))  $userUpdate['name']  = $validated['name'];
             if (isset($validated['email'])) $userUpdate['email'] = $validated['email'];
-            if (!empty($validated['password'])) $userUpdate['password'] = Hash::make($validated['password']);
+            if (!empty($validated['password'])) {
+                $userUpdate['password'] = Hash::make($validated['password']);
+                // Definir senha = liberar acesso: garante papel, contexto e usuário ativo
+                $userUpdate['active'] = true;
+                UserRole::firstOrCreate(['user_id' => $user->id, 'role' => 'candidato']);
+                UserContext::firstOrCreate([
+                    'user_id'    => $user->id,
+                    'role'       => 'candidato',
+                    'context_id' => $candidato->id,
+                ]);
+            }
             if (!empty($userUpdate)) $user->update($userUpdate);
         }
 
@@ -325,6 +349,8 @@ class CandidatoController extends Controller
             'dados'        => $validated['dados'] ?? null,
         ]);
 
+        app(\App\Services\SincronizacaoAgendamentosParecer::class)->doParecer($parecer);
+
         return response()->json([
             'message' => 'Parecer registrado.',
             'data'    => $parecer,
@@ -347,6 +373,8 @@ class CandidatoController extends Controller
             'nota'  => $validated['nota'] ?? null,
         ], array_key_exists('empresa_id', $validated) ? ['empresa_id' => $validated['empresa_id']] : [],
            array_key_exists('dados', $validated) ? ['dados' => $validated['dados']] : []));
+
+        app(\App\Services\SincronizacaoAgendamentosParecer::class)->doParecer($parecer);
 
         return response()->json([
             'message' => 'Parecer atualizado com sucesso.',
@@ -384,7 +412,8 @@ class CandidatoController extends Controller
         foreach ($request->vagas_ids as $vagaId) {
             $envio = \App\Models\Envio::firstOrCreate(
                 ['candidato_id' => $candidato->id, 'vaga_id' => $vagaId],
-                ['curriculo_id' => $curriculo?->id, 'status' => 'enviado']
+                // Encaminhado pela operação (agência), não candidatura espontânea
+                ['curriculo_id' => $curriculo?->id, 'status' => 'enviado', 'origem' => 'franquia']
             );
             $vinculados[] = $vagaId;
         }

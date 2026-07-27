@@ -11,19 +11,29 @@ class FranquiaParceiroGestaoController extends Controller
     // GET /franquia/parceiros
     public function index(Request $request)
     {
-        $parceiros = Parceiro::where('active', true)
-            ->orderBy('razao_social')
+        // Parceiros do cadastro público preenchem nome_empresa (razao_social
+        // fica nula), então ordenamos e exibimos pelo nome efetivo.
+        // A tela filtra por categoria via servicos[].categoria.nome
+        $parceiros = Parceiro::with(['servicos:id,parceiro_id,categoria_id,nome_servico,descricao,proposta_url',
+                                     'servicos.categoria:id,nome'])
+            ->where('active', true)
+            ->orderByRaw('COALESCE(NULLIF(nome_empresa, ""), razao_social)')
             ->paginate(20);
 
         return response()->json([
             'data' => $parceiros->getCollection()->map(fn($p) => [
                 'id'           => $p->id,
+                'nome_empresa' => $p->nome_empresa ?: $p->razao_social,
                 'razao_social' => $p->razao_social,
                 'categoria'    => $p->categoria,
+                'descricao'    => $p->descricao,
+                'logo_url'     => $p->logo_url,
+                'bairro'       => $p->bairro,
                 'cidade'       => $p->cidade,
                 'estado'       => $p->estado,
                 'email'        => $p->email,
                 'telefone'     => $p->telefone,
+                'servicos'     => $p->servicos,
                 'active'       => $p->active,
             ]),
             'meta' => [
@@ -42,6 +52,7 @@ class FranquiaParceiroGestaoController extends Controller
 
         return response()->json(['data' => [
             'id'           => $parceiro->id,
+            'nome_empresa' => $parceiro->nome_empresa ?: $parceiro->razao_social,
             'razao_social' => $parceiro->razao_social,
             'categoria'    => $parceiro->categoria,
             'descricao'    => $parceiro->descricao,

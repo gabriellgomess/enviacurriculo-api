@@ -10,7 +10,7 @@ class EmpresaCurriculo extends Model
     protected $fillable = [
         'empresa_id', 'candidato_id', 'kanban_etapa_id',
         'nome', 'email', 'telefone', 'cpf', 'cargo_desejado',
-        'cidade', 'estado', 'bairro', 'cargos_interesse',
+        'cidade', 'estado', 'bairro', 'latitude', 'longitude', 'cargos_interesse',
         'experiencia_profissional', 'educacao', 'habilidades',
         'origem', 'arquivo_path', 'arquivo_nome',
         'arquivo_cnh_path', 'arquivo_cnh_nome',
@@ -23,6 +23,8 @@ class EmpresaCurriculo extends Model
         'cargos_interesse' => 'array',
         'diplomas'         => 'array',
         'active'           => 'boolean',
+        'latitude'         => 'float',
+        'longitude'        => 'float',
     ];
 
     public function candidato()   { return $this->belongsTo(Candidato::class); }

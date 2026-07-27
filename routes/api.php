@@ -93,8 +93,15 @@ Route::prefix('auth')->group(function () {
     Route::post('reset-password',  [PasswordResetController::class, 'reset'])->middleware('throttle:6,1');
 });
 
-// Cadastro público de empresas
-Route::post('empresas/cadastrar', \App\Http\Controllers\Api\RegisterEmpresaController::class)
+// Cadastro público de empresas ("quero ser empresa")
+Route::prefix('empresas/cadastrar')->group(function () {
+    Route::post('verificar', [\App\Http\Controllers\Api\RegisterEmpresaController::class, 'verificarDisponibilidade'])
+        ->middleware('throttle:20,1');
+    Route::post('pagamento', [\App\Http\Controllers\Api\RegisterEmpresaController::class, 'gerarPagamento'])
+        ->middleware('throttle:10,1');
+    Route::get('pagamento/{payment_id}/status', [\App\Http\Controllers\Api\RegisterEmpresaController::class, 'statusPagamento']);
+});
+Route::post('empresas/cadastrar', [\App\Http\Controllers\Api\RegisterEmpresaController::class, 'store'])
     ->middleware('throttle:10,1');
 
 // Consulta de CNPJ — pública, com cache de 24h no backend
@@ -123,6 +130,8 @@ Route::post('disc-teste/{token}/responder', [\App\Http\Controllers\Api\DiscPubli
 
 // Cadastro público de parceiros
 Route::prefix('parceiro/cadastro')->group(function () {
+    Route::post('verificar', [\App\Http\Controllers\Api\ParceiroCadastroController::class, 'verificarDisponibilidade'])
+        ->middleware('throttle:20,1');
     Route::post('pagamento', [\App\Http\Controllers\Api\ParceiroCadastroController::class, 'gerarPagamento']);
     Route::get('pagamento/{payment_id}/status', [\App\Http\Controllers\Api\ParceiroCadastroController::class, 'statusPagamento']);
     Route::post('/', [\App\Http\Controllers\Api\ParceiroCadastroController::class, 'store']);
@@ -405,18 +414,27 @@ Route::middleware('auth:sanctum')->group(function () {
     | Painel Empresa
     |--------------------------------------------------------------------------
     */
-    Route::middleware('role:empresa')->prefix('empresa')->group(function () {
+    // 'empresa.plataforma' barra as AÇÕES (POST/PUT/PATCH/DELETE) quando o
+    // produto contratado é somente Agência de Empregos. Consultas (GET) seguem
+    // liberadas: a empresa navega e acompanha, mas quem opera é a franquia.
+    // Exceções liberadas com withoutMiddleware abaixo (perfil, notificações e
+    // upgrade de plano — sem elas a empresa ficaria sem como contratar).
+    Route::middleware(['role:empresa', 'empresa.plataforma'])->prefix('empresa')->group(function () {
         // Perfil
         Route::get('perfil',       [EmpresaPerfilController::class, 'show']);
-        Route::put('perfil',       [EmpresaPerfilController::class, 'update']);
-        Route::post('perfil/logo', [EmpresaPerfilController::class, 'uploadLogo']);
+        Route::put('perfil',       [EmpresaPerfilController::class, 'update'])
+            ->withoutMiddleware('empresa.plataforma');
+        Route::post('perfil/logo', [EmpresaPerfilController::class, 'uploadLogo'])
+            ->withoutMiddleware('empresa.plataforma');
         Route::get('taxas',        [EmpresaPerfilController::class, 'taxas']);
         Route::get('documentos-agencia', [EmpresaPerfilController::class, 'documentosAgencia']);
 
         // Notificações
         Route::get('notificacoes',            [\App\Http\Controllers\Api\EmpresaNotificacaoController::class, 'index']);
-        Route::patch('notificacoes/{id}/lida', [\App\Http\Controllers\Api\EmpresaNotificacaoController::class, 'marcarLida']);
-        Route::post('notificacoes/lidas',     [\App\Http\Controllers\Api\EmpresaNotificacaoController::class, 'marcarLidas']);
+        Route::patch('notificacoes/{id}/lida', [\App\Http\Controllers\Api\EmpresaNotificacaoController::class, 'marcarLida'])
+            ->withoutMiddleware('empresa.plataforma');
+        Route::post('notificacoes/lidas',     [\App\Http\Controllers\Api\EmpresaNotificacaoController::class, 'marcarLidas'])
+            ->withoutMiddleware('empresa.plataforma');
 
         // Dashboard
         Route::get('dashboard',           [EmpresaDashboardController::class, 'index']);
@@ -496,7 +514,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('plano',           [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'show']);
         Route::get('plano/catalogo',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'catalogo']);
         Route::get('plano/utilizacao',[\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'planoUtilizacao']);
-        Route::post('plano/upgrade',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'upgrade']);
+        Route::post('plano/upgrade',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'upgrade'])
+            ->withoutMiddleware('empresa.plataforma'); // caminho de saída do produto Agência
         Route::get('faturamentos',    [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'faturamentos']);
         Route::get('mensalidades',    [\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'mensalidades']);
 

@@ -89,7 +89,7 @@ class EmpresaVagaController extends Controller
             return $gate;
         }
 
-        $data = $this->validateVaga($request);
+        $data = $this->normalizarCanal($this->validateVaga($request), $empresaId);
 
         $vaga = Vaga::create([
             ...$this->mapToDb($data),
@@ -131,7 +131,7 @@ class EmpresaVagaController extends Controller
 
         $vaga = Vaga::where('empresa_id', $empresaId)->findOrFail($id);
 
-        $data = $this->validateVaga($request);
+        $data = $this->normalizarCanal($this->validateVaga($request), $empresaId);
         $vaga->update($this->mapToDb($data));
 
         if (array_key_exists('beneficios', $data)) {
@@ -185,6 +185,10 @@ class EmpresaVagaController extends Controller
             'salario_oculto'   => 'nullable|boolean',
             'ocultar_empresa'  => 'nullable|boolean',
             'ocultar_endereco' => 'nullable|boolean',
+            // Visibilidade do anúncio enviado à agência (usado quando canal='ambos')
+            'ocultar_salario_agencia'  => 'nullable|boolean',
+            'ocultar_empresa_agencia'  => 'nullable|boolean',
+            'ocultar_endereco_agencia' => 'nullable|boolean',
             'cep'              => 'nullable|string|max:9',
             'logradouro'       => 'nullable|string|max:255',
             'numero'           => 'nullable|string|max:20',
@@ -248,6 +252,9 @@ class EmpresaVagaController extends Controller
                 : [],
             'ocultar_empresa'  => $v->ocultar_empresa,
             'ocultar_endereco' => $v->ocultar_endereco,
+            'ocultar_salario_agencia'  => $v->ocultar_salario_agencia,
+            'ocultar_empresa_agencia'  => $v->ocultar_empresa_agencia,
+            'ocultar_endereco_agencia' => $v->ocultar_endereco_agencia,
             'cep'              => $v->cep,
             'logradouro'       => $v->logradouro,
             'numero'           => $v->numero,
@@ -256,6 +263,51 @@ class EmpresaVagaController extends Controller
             'turno'            => $v->turno,
             'horario_trabalho' => $v->horario_trabalho,
         ];
+    }
+
+    /**
+     * Garante que o canal escolhido é permitido pelo produto contratado
+     * (empresas.tipo_acesso) e zera as flags de visibilidade do canal que não
+     * será publicado — evita configuração "fantasma" gravada no banco.
+     *
+     * A anonimização da empresa em vagas de agência NÃO depende de flag: é
+     * automática no painel do candidato.
+     */
+    private function normalizarCanal(array $data, int $empresaId): array
+    {
+        $tipoAcesso = Empresa::find($empresaId)?->tipo_acesso;
+
+        $permitidos = match ($tipoAcesso) {
+            'plataforma' => ['plataforma'],
+            'agencia'    => ['agencia'],
+            'ambos'      => ['agencia', 'plataforma', 'ambos'],
+            // tipo_acesso não definido (cadastro antigo/admin): não restringe
+            default      => ['agencia', 'plataforma', 'ambos'],
+        };
+
+        if (!in_array($data['canal'], $permitidos, true)) {
+            abort(response()->json([
+                'message' => 'Canal de publicação não disponível para o produto contratado.',
+                'errors'  => ['canal' => ['Canal não disponível para o produto contratado.']],
+            ], 422));
+        }
+
+        $canal = $data['canal'];
+
+        // Sem anúncio na plataforma → flags da plataforma não se aplicam
+        if ($canal === 'agencia') {
+            $data['ocultar_empresa']  = false;
+            $data['ocultar_endereco'] = false;
+        }
+
+        // Sem anúncio na agência → flags da agência não se aplicam
+        if ($canal === 'plataforma') {
+            $data['ocultar_salario_agencia']  = false;
+            $data['ocultar_empresa_agencia']  = false;
+            $data['ocultar_endereco_agencia'] = false;
+        }
+
+        return $data;
     }
 
     private function gatePlano(int $empresaId)

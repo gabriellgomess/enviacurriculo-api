@@ -187,6 +187,9 @@ class EmpresaTesteController extends Controller
         $teste = TesteAgendado::where('empresa_id', $empresaId)->findOrFail($id);
         $teste->update($this->validateAgendado($request));
 
+        // Se o teste veio de um parecer, devolve data/local para lá
+        app(\App\Services\SincronizacaoAgendamentosParecer::class)->doTeste($teste->fresh());
+
         return response()->json(['message' => 'Teste atualizado.']);
     }
 
@@ -209,7 +212,12 @@ class EmpresaTesteController extends Controller
     {
         $empresaId = $this->tokenContextId($request);
 
-        TesteAgendado::where('empresa_id', $empresaId)->findOrFail($id)->delete();
+        $teste = TesteAgendado::where('empresa_id', $empresaId)->findOrFail($id);
+
+        // Limpa a informação no parecer de origem antes de remover o vínculo
+        app(\App\Services\SincronizacaoAgendamentosParecer::class)->aoExcluirTeste($teste);
+
+        $teste->delete();
 
         return response()->noContent();
     }
@@ -252,6 +260,9 @@ class EmpresaTesteController extends Controller
             'local'      => $t->local,
             'status'     => $t->status,
             'observacao' => $t->observacao,
+            // Testes vindos do parecer da franquia ficam sinalizados
+            'origem'     => $t->parecer_id ? 'parecer' : 'empresa',
+            'parecer_id' => $t->parecer_id,
         ];
     }
 }
