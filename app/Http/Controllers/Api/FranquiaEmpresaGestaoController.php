@@ -161,6 +161,10 @@ class FranquiaEmpresaGestaoController extends Controller
             'reposicao_dias'        => 'nullable|integer|min:1',
             'senha'                 => 'required|string|min:6',
             'beneficios'            => 'nullable|array',
+            // Produto contratado. Empresa cadastrada pela franquia é cliente de
+            // agência por padrão; sem isso o campo ficava nulo e a empresa
+            // desaparecia dos filtros por produto (feed do candidato, colunas etc).
+            'tipo_acesso'           => 'nullable|in:plataforma,agencia,ambos',
         ]);
 
         return DB::transaction(function () use ($validated, $franquiaId) {
@@ -181,6 +185,7 @@ class FranquiaEmpresaGestaoController extends Controller
                     'franquia_id' => $franquiaId,
                     'active'      => true,
                     'status'      => 'aprovado',
+                    'tipo_acesso' => $validated['tipo_acesso'] ?? 'agencia',
                 ]
             ));
 
