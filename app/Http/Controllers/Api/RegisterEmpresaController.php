@@ -225,6 +225,12 @@ class RegisterEmpresaController extends Controller
                 'estado'       => $validated['estado'],
                 'latitude'     => $coords['latitude'] ?? null,
                 'longitude'    => $coords['longitude'] ?? null,
+                // Prazo de vencimento e reposição são negociados com a franquia
+                // e definidos depois pelo Admin no cadastro da empresa — não
+                // devem sair já com o padrão de 30 dias da coluna, como se já
+                // tivessem sido acertados no autocadastro.
+                'prazo_vencimento_dias' => 0,
+                'reposicao_dias'        => 0,
                 'active'       => $aprovadaDeImediato,
                 'asaas_customer_id'     => $validated['asaas_customer_id'] ?? null,
                 'asaas_subscription_id' => $validated['asaas_subscription_id'] ?? null,
