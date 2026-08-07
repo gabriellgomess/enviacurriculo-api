@@ -4,239 +4,345 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use App\Models\User;
 use App\Models\UserRole;
 use App\Models\UserContext;
 use App\Models\Candidato;
 use App\Models\CandidatoDocumento;
 
+/**
+ * PASSO 4 do plano de migração.
+ *
+ * `ec_curriculos` → `candidatos` + `candidato_documentos`.
+ * 12.442 currículos no dump → 12.250 cadastros e 11.443 documentos.
+ *
+ * Decisões aplicadas:
+ *   17/I/N — franquia_id = NULL (banco global, visível a todas as franquias)
+ *   18 — senha aleatória; acesso via "esqueci minha senha"
+ *   19 — quem não tem usuário no sistema antigo entra sem login
+ *   20 — currículos sem arquivo entram normalmente (999 casos)
+ *   D  — um cadastro por e-mail, mantendo o mais recente
+ *   L  — todos os arquivos do grupo viram documentos; o mais recente fica ativo
+ *   H  — o campo `consultant` do sistema antigo não é migrado
+ *
+ * Gera storage/app/migracao-mapa-candidatos.json com id_curriculo_antigo →
+ * candidato_id, incluindo os descartados (que apontam para o mantido). Os
+ * Passos 5, 6 e 7 dependem desse mapa (decisão K).
+ */
 class MigrateCandidates extends Command
 {
-    protected $signature = 'ec:migrate-candidates {--path= : O caminho absoluto para a pasta storage/app do sistema antigo}';
-    protected $description = 'Migra os candidatos, currículos e arquivos do sistema antigo para o novo banco de dados';
+    protected $signature = 'ec:migrate-candidates
+                            {--path= : Caminho da pasta storage/app do sistema antigo}
+                            {--dry-run : Apenas simula, sem gravar nada}
+                            {--limite= : Processa apenas os N primeiros grupos (para teste)}';
 
-    public function handle()
+    protected $description = 'Migra os candidatos e currículos do sistema antigo';
+
+    public function handle(): int
     {
-        $oldStoragePath = $this->option('path');
-        $this->info("Iniciando migração de candidatos...");
+        $path   = $this->option('path');
+        $dry    = (bool) $this->option('dry-run');
+        $limite = (int) $this->option('limite');
 
-        // Testa conexão com o banco antigo
+        $this->newLine();
+        $this->info('PASSO 4 — Candidatos');
+        $this->line('  modo:      ' . ($dry ? 'SIMULAÇÃO' : 'EXECUÇÃO'));
+        $this->line('  currículos: ' . ($path ?: 'não informado — arquivos não serão copiados'));
+        $this->newLine();
+
         try {
             DB::connection('mysql_antigo')->getPdo();
         } catch (\Exception $e) {
-            $this->error("Não foi possível conectar ao banco de dados antigo. Verifique as configurações 'mysql_antigo' em config/database.php.");
-            $this->error("Erro: " . $e->getMessage());
+            $this->error('Sem conexão com o banco antigo: ' . $e->getMessage());
             return 1;
         }
 
-        // Lê todos os currículos do banco antigo
-        $oldCurriculos = DB::connection('mysql_antigo')
+        $this->line('  lendo ec_curriculos...');
+        $todos = DB::connection('mysql_antigo')
             ->table('ec_curriculos')
+            ->orderBy('id')
             ->get();
 
-        $this->info("Total de currículos a migrar: " . $oldCurriculos->count());
+        $this->line("  currículos no banco antigo: {$todos->count()}");
 
-        $bar = $this->output->createProgressBar($oldCurriculos->count());
+        // ---------- Agrupamento por e-mail (decisões D e L) ----------
+        $grupos = $this->agrupar($todos);
+        if ($limite > 0) {
+            $grupos = array_slice($grupos, 0, $limite, true);
+            $this->warn("  limitado aos primeiros {$limite} grupos");
+        }
+
+        $totalDocs = $todos->filter(fn($c) => !empty($c->file_path))->count();
+        $noEscopo  = array_sum(array_map('count', $grupos));
+        $descartados = $noEscopo - count($grupos);
+
+        $this->line('  cadastros após deduplicar: ' . count($grupos));
+        $this->line("  currículos que viram apenas documento: {$descartados}");
+        $this->newLine();
+
+        if ($dry) {
+            $this->mostrarSimulacao($todos, $grupos, $totalDocs);
+            return 0;
+        }
+
+        // ---------- Execução ----------
+        $bar = $this->output->createProgressBar(count($grupos));
         $bar->start();
 
-        foreach ($oldCurriculos as $oldCurr) {
-            DB::transaction(function () use ($oldCurr, $oldStoragePath) {
-                // 1. Obter dados do usuário e buscar correspondência no ec_users/ec_candidates
-                $email = $oldCurr->person_email;
-                if (empty($email)) {
-                    $email = 'cv_' . $oldCurr->id . '@banco.local';
-                }
+        $mapa      = [];
+        $criados   = 0;
+        $comLogin  = 0;
+        $documentos = 0;
+        $arquivos  = 0;
+        $semPerfil = [];
+        $erros     = [];
 
-                $oldUser = DB::connection('mysql_antigo')
-                    ->table('ec_users')
-                    ->where('email', $email)
-                    ->first();
+        foreach ($grupos as $email => $registros) {
+            try {
+                $resultado = DB::transaction(function () use ($email, $registros, $path) {
+                    $principal = $registros[0];   // mais recente
 
-                // Busca franquia_id e active do ec_candidates se houver
-                $franchiseId = null;
-                $active = true;
-                $birthDate = null;
-                $desiredSalary = null;
-                $oldCand = null;
-
-                if (!empty($oldCurr->id_person) && str_starts_with($oldCurr->id_person, 'candidate_')) {
-                    $candId = (int) str_replace('candidate_', '', $oldCurr->id_person);
-                    $oldCand = DB::connection('mysql_antigo')
-                        ->table('ec_candidates')
-                        ->where('id', $candId)
-                        ->first();
-                }
-
-                if (!$oldCand && !empty($oldCurr->person_email)) {
-                    $oldCand = DB::connection('mysql_antigo')
-                        ->table('ec_candidates')
-                        ->where('email', $oldCurr->person_email)
-                        ->first();
-                }
-
-                if ($oldCand) {
-                    $franchiseId = $oldCand->franchise_id;
-                    $active = (bool) $oldCand->active;
-                    $birthDate = $oldCand->birth_date;
-                    $desiredSalary = $oldCand->desired_salary;
-                }
-
-                // 2. Criar ou atualizar usuário no banco novo
-                $user = User::updateOrCreate(
-                    ['email' => $email],
-                    [
-                        'name'     => $oldCurr->person_name ?? ($oldUser->name ?? ($oldCand->name ?? 'Candidato Sem Nome')),
-                        'phone'    => $this->mapTelefone($oldCurr->person_phone ?? ($oldCand->phone ?? ($oldUser->phone ?? null))),
-                        'password' => $oldUser->password ?? bcrypt(\Illuminate\Support\Str::random(16)), // Preserva hash antigo ou gera nova senha aleatória
-                        'active'   => $oldUser ? ($oldUser->status === 'active') : $active,
-                    ]
-                );
-
-                // 3. Criar a Role de Candidato no novo sistema
-                UserRole::firstOrCreate([
-                    'user_id' => $user->id,
-                    'role'    => 'candidato'
-                ]);
-
-                // 4. Criar Candidato no novo sistema
-                $candidato = Candidato::updateOrCreate(
-                    ['user_id' => $user->id],
-                    [
-                        'franquia_id'              => $franchiseId,
-                        'telefone'                 => $this->mapTelefone($oldCurr->person_phone ?? ($oldCand->phone ?? ($oldUser->phone ?? null))),
-                        'nascimento'               => $birthDate,
-                        'cep'                      => $this->mapCep($oldCurr->cep ?? ($oldCand->cep ?? null)),
-                        'rua'                      => $oldCurr->street ?? ($oldCand->street ?? null),
-                        'numero'                   => $oldCurr->number ?? ($oldCand->number ?? null),
-                        'complemento'              => $oldCurr->complement ?? ($oldCand->complement ?? null),
-                        'bairro'                   => $oldCurr->neighborhood ?? ($oldCand->neighborhood ?? null),
-                        'cidade'                   => $oldCurr->city ?? ($oldCand->city ?? null),
-                        'estado'                   => $this->mapEstado($oldCurr->state ?? ($oldCand->state ?? null)),
-                        'experiencia_profissional' => $oldCurr->professional_experience ?? null,
-                        'educacao'                 => $oldCurr->education ?? null,
-                        'habilidades'              => $oldCurr->skills ?? null,
-                        'idiomas'                  => $oldCurr->languages ?? null,
-                        'informacoes_adicionais'   => $oldCurr->additional_info ?? null,
-                        'pretensao_salarial'       => $desiredSalary,
-                        'latitude'                 => $oldCand->latitude ?? $oldCurr->latitude ?? null,
-                        'longitude'                => $oldCand->longitude ?? $oldCurr->longitude ?? null,
-                        'active'                   => $active,
-                    ]
-                );
-
-                // 5. Associar Contexto de Candidato no novo sistema
-                UserContext::updateOrCreate(
-                    ['user_id' => $user->id, 'role' => 'candidato'],
-                    ['context_id' => $candidato->id]
-                );
-
-                // 6. Migrar o arquivo do currículo e registrá-lo em candidato_documentos
-                if (!empty($oldCurr->file_path)) {
-                    $newPath = "candidatos/{$candidato->id}/" . basename($oldCurr->file_path);
-
-                    // Se o caminho físico foi passado por parâmetro, copiar o arquivo real
-                    if ($oldStoragePath) {
-                        $fullOldPath = rtrim($oldStoragePath, '/') . '/' . ltrim($oldCurr->file_path, '/');
-                        if (file_exists($fullOldPath)) {
-                            Storage::disk('public')->put($newPath, file_get_contents($fullOldPath));
-                        }
+                    // Decisão 18: senha sempre aleatória
+                    $user = User::where('email', $email)->first();
+                    $novoLogin = false;
+                    if (!$user) {
+                        $user = User::create([
+                            'name'     => $principal->person_name ?: 'Candidato sem nome',
+                            'email'    => $email,
+                            'phone'    => $this->mapTelefone($principal->person_phone),
+                            'password' => Hash::make(Str::random(24)),
+                            'active'   => true,
+                        ]);
+                        $novoLogin = true;
                     }
 
-                    CandidatoDocumento::updateOrCreate(
-                        ['candidato_id' => $candidato->id, 'arquivo_nome' => $oldCurr->file_name],
+                    // Não contaminar conta admin com perfil de candidato.
+                    // O cadastro entra no acervo (a franquia enxerga), mas a
+                    // conta não ganha o papel nem o contexto de candidato.
+                    $ehAdmin = UserRole::where('user_id', $user->id)->where('role', 'admin')->exists();
+
+                    if (!$ehAdmin) {
+                        UserRole::firstOrCreate(['user_id' => $user->id, 'role' => 'candidato']);
+                    }
+
+                    $candidato = Candidato::updateOrCreate(
+                        ['user_id' => $user->id],
                         [
-                            'tipo'         => 'curriculo',
-                            'arquivo_path' => $newPath,
-                            'tamanho_kb'   => (int) ceil(($oldCurr->file_size ?? 0) / 1024),
-                            'ativo'        => true,
+                            'franquia_id'              => null,   // decisões 17, I e N
+                            'telefone'                 => $this->mapTelefone($principal->person_phone),
+                            'cep'                      => $this->mapCep($principal->cep),
+                            'rua'                      => $principal->street,
+                            'numero'                   => $principal->number,
+                            'complemento'              => $principal->complement,
+                            'bairro'                   => $principal->neighborhood,
+                            'cidade'                   => $principal->city,
+                            'estado'                   => $this->mapEstado($principal->state),
+                            'experiencia_profissional' => $principal->professional_experience,
+                            'educacao'                 => $principal->education,
+                            'habilidades'              => $principal->skills,
+                            'idiomas'                  => $principal->languages,
+                            'informacoes_adicionais'   => $principal->additional_info,
+                            'latitude'                 => $principal->latitude,
+                            'longitude'                => $principal->longitude,
+                            'active'                   => true,
                         ]
                     );
+
+                    // Sem contexto o candidato não loga
+                    if (!$ehAdmin) {
+                        UserContext::updateOrCreate(
+                            ['user_id' => $user->id, 'role' => 'candidato'],
+                            ['context_id' => $candidato->id]
+                        );
+                    }
+
+                    // Decisão L: todos os arquivos do grupo viram documento
+                    $docs = 0;
+                    $copiados = 0;
+                    foreach ($registros as $i => $reg) {
+                        if (empty($reg->file_path)) continue;
+
+                        $nome = $reg->file_name ?: basename($reg->file_path);
+                        $destino = "candidatos/{$candidato->id}/{$reg->id}-" . basename($reg->file_path);
+
+                        if ($path) {
+                            $origem = rtrim($path, '/') . '/' . ltrim($reg->file_path, '/');
+                            if (is_file($origem)) {
+                                Storage::disk('public')->put($destino, file_get_contents($origem));
+                                $copiados++;
+                            }
+                        }
+
+                        CandidatoDocumento::updateOrCreate(
+                            ['candidato_id' => $candidato->id, 'arquivo_path' => $destino],
+                            [
+                                'tipo'         => 'curriculo',
+                                'arquivo_nome' => $nome,
+                                'tamanho_kb'   => (int) ceil(((int) $reg->file_size) / 1024),
+                                'ativo'        => $i === 0,   // só o mais recente fica ativo
+                            ]
+                        );
+                        $docs++;
+                    }
+
+                    return compact('candidato', 'novoLogin', 'docs', 'copiados', 'registros', 'ehAdmin');
+                });
+
+                foreach ($registros as $reg) {
+                    $mapa[$reg->id] = $resultado['candidato']->id;
                 }
-            });
+
+                $criados++;
+                if ($resultado['novoLogin']) $comLogin++;
+                if ($resultado['ehAdmin'])   $semPerfil[] = $email;
+                $documentos += $resultado['docs'];
+                $arquivos   += $resultado['copiados'];
+            } catch (\Throwable $e) {
+                $erros[] = "{$email}: " . Str::limit($e->getMessage(), 120);
+            }
 
             $bar->advance();
         }
 
         $bar->finish();
+        $this->newLine(2);
+
+        $this->info("Concluído: {$criados} candidato(s).");
+        $this->table(['Indicador', 'Total'], [
+            ['cadastros criados',      $criados],
+            ['usuários criados',       $comLogin],
+            ['documentos registrados', $documentos],
+            ['arquivos copiados',      $path ? $arquivos : 'sem --path'],
+            ['erros',                  count($erros)],
+        ]);
+
+        if ($semPerfil) {
+            $this->newLine();
+            $this->warn('Cadastros criados SEM perfil de candidato (e-mail é de conta admin):');
+            foreach ($semPerfil as $e) $this->line("  · {$e}");
+            $this->line('  (o currículo entra no acervo, mas a conta admin não vira candidato)');
+        }
+
+        if ($erros) {
+            $this->newLine();
+            $this->error('Falhas:');
+            foreach (array_slice($erros, 0, 20) as $e) $this->line("  · {$e}");
+            if (count($erros) > 20) $this->line('  ... e mais ' . (count($erros) - 20));
+        }
+
+        $arquivo = storage_path('app/migracao-mapa-candidatos.json');
+        file_put_contents($arquivo, json_encode($mapa, JSON_PRETTY_PRINT));
         $this->newLine();
-        $this->info("Migração concluída com sucesso!");
+        $this->info('Mapa id_curriculo_antigo → candidato_id salvo em:');
+        $this->line("  {$arquivo}");
+        $this->line('  (' . count($mapa) . ' entradas — os Passos 5, 6 e 7 dependem dele)');
+        $this->newLine();
+
         return 0;
     }
+
+    /**
+     * Agrupa por e-mail, mais recente primeiro (decisão D).
+     * Devolve [email => [registros...]].
+     */
+    private function agrupar($todos): array
+    {
+        $grupos = [];
+
+        foreach ($todos as $c) {
+            $email = strtolower(trim((string) $c->person_email));
+            if ($email === '') {
+                // Sem e-mail não há como identificar a pessoa: cadastro isolado
+                $email = 'cv_' . $c->id . '@banco.local';
+            }
+            $grupos[$email][] = $c;
+        }
+
+        foreach ($grupos as $email => $registros) {
+            usort($registros, function ($a, $b) {
+                $da = $a->created_at ?: ($a->created_date ?: '');
+                $db = $b->created_at ?: ($b->created_date ?: '');
+                if ($da !== $db) return strcmp($db, $da);   // mais recente primeiro
+                return $b->id <=> $a->id;
+            });
+            $grupos[$email] = $registros;
+        }
+
+        return $grupos;
+    }
+
+    private function mostrarSimulacao($todos, array $grupos, int $totalDocs): void
+    {
+        $duplicados = array_filter($grupos, fn($g) => count($g) > 1);
+        $semArquivo = $todos->filter(fn($c) => empty($c->file_path))->count();
+
+        $porPasta = [];
+        foreach ($todos as $c) {
+            if (empty($c->file_path)) continue;
+            $raiz = explode('/', $c->file_path)[0];
+            $porPasta[$raiz] = ($porPasta[$raiz] ?? 0) + 1;
+        }
+
+        $this->table(['Indicador', 'Total'], [
+            ['currículos no dump',         $todos->count()],
+            ['cadastros a criar',          count($grupos)],
+            ['e-mails com mais de um CV',  count($duplicados)],
+            ['documentos a registrar',     $totalDocs],
+            ['currículos sem arquivo',     $semArquivo],
+        ]);
+
+        $this->newLine();
+        $this->line('Arquivos por pasta de origem:');
+        foreach ($porPasta as $pasta => $qtd) {
+            $this->line("  · {$pasta}/: {$qtd}");
+        }
+
+        $this->newLine();
+        $this->line('Nada foi gravado. Para executar:');
+        $this->line('  <fg=yellow>php artisan ec:migrate-candidates</>');
+    }
+
+    // ---------------------------------------------------------------
 
     private function mapEstado(?string $state): ?string
     {
         if (empty($state)) return null;
         $state = trim(mb_strtoupper($state, 'UTF-8'));
-        
-        if (strlen($state) === 2) {
-            return $state;
-        }
-        
-        $mapping = [
-            'ACRE' => 'AC',
-            'ALAGOAS' => 'AL',
-            'AMAPA' => 'AP',
-            'AMAZONAS' => 'AM',
-            'BAHIA' => 'BA',
-            'CEARA' => 'CE',
-            'DISTRITO FEDERAL' => 'DF',
-            'ESPIRITO SANTO' => 'ES',
-            'GOIAS' => 'GO',
-            'MARANHAO' => 'MA',
-            'MATO GROSSO' => 'MT',
-            'MATO GROSSO DO SUL' => 'MS',
-            'MINAS GERAIS' => 'MG',
-            'PARA' => 'PA',
-            'PARAIBA' => 'PB',
-            'PARANA' => 'PR',
-            'PERNAMBUCO' => 'PE',
-            'PIAUI' => 'PI',
-            'RIO DE JANEIRO' => 'RJ',
-            'RIO GRANDE DO NORTE' => 'RN',
-            'RIO GRANDE DO SUL' => 'RS',
-            'RONDONIA' => 'RO',
-            'RORAIMA' => 'RR',
-            'SANTA CATARINA' => 'SC',
-            'SAO PAULO' => 'SP',
-            'SERGIPE' => 'SE',
-            'TOCANTINS' => 'TO'
+        if (mb_strlen($state) === 2) return $state;
+
+        $mapa = [
+            'ACRE' => 'AC', 'ALAGOAS' => 'AL', 'AMAPA' => 'AP', 'AMAZONAS' => 'AM',
+            'BAHIA' => 'BA', 'CEARA' => 'CE', 'DISTRITO FEDERAL' => 'DF',
+            'ESPIRITO SANTO' => 'ES', 'GOIAS' => 'GO', 'MARANHAO' => 'MA',
+            'MATO GROSSO' => 'MT', 'MATO GROSSO DO SUL' => 'MS', 'MINAS GERAIS' => 'MG',
+            'PARA' => 'PA', 'PARAIBA' => 'PB', 'PARANA' => 'PR', 'PERNAMBUCO' => 'PE',
+            'PIAUI' => 'PI', 'RIO DE JANEIRO' => 'RJ', 'RIO GRANDE DO NORTE' => 'RN',
+            'RIO GRANDE DO SUL' => 'RS', 'RONDONIA' => 'RO', 'RORAIMA' => 'RR',
+            'SANTA CATARINA' => 'SC', 'SAO PAULO' => 'SP', 'SERGIPE' => 'SE',
+            'TOCANTINS' => 'TO',
         ];
-        
-        // Remove accents
-        $normalized = iconv('UTF-8', 'ASCII//TRANSLIT', $state);
-        $normalized = preg_replace('/[^A-Z\s]/', '', mb_strtoupper($normalized));
-        $normalized = trim($normalized);
-        
-        if (isset($mapping[$normalized])) {
-            return $mapping[$normalized];
-        }
-        
-        return substr($state, 0, 2);
+
+        $normal = iconv('UTF-8', 'ASCII//TRANSLIT', $state);
+        $normal = trim(preg_replace('/[^A-Z\s]/', '', mb_strtoupper($normal)));
+
+        return $mapa[$normal] ?? mb_substr($state, 0, 2);
     }
 
     private function mapCep(?string $cep): ?string
     {
         if (empty($cep)) return null;
-        $clean = preg_replace('/\D/', '', $cep);
-        if (strlen($clean) === 8) {
-            return substr($clean, 0, 5) . '-' . substr($clean, 5);
-        }
-        return substr($clean, 0, 9);
+        $d = preg_replace('/\D/', '', $cep);
+        return strlen($d) === 8 ? substr($d, 0, 5) . '-' . substr($d, 5) : substr($d, 0, 9);
     }
 
     private function mapTelefone(?string $phone): ?string
     {
         if (empty($phone)) return null;
-        
-        $parts = preg_split('/[;\/,]/', $phone);
-        $first = trim($parts[0]);
-        $clean = preg_replace('/\D/', '', $first);
-        
-        if (strlen($clean) > 20) {
-            return substr($clean, 0, 20);
-        }
-        
-        return $clean ?: substr($first, 0, 20);
+        $primeiro = trim(preg_split('/[;\/,]/', $phone)[0]);
+        $d = preg_replace('/\D/', '', $primeiro);
+        return substr($d ?: $primeiro, 0, 20);
     }
 }
