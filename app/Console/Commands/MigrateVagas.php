@@ -25,6 +25,8 @@ use App\Models\Franquia;
  */
 class MigrateVagas extends Command
 {
+    use \App\Console\Commands\Concerns\PreservaDatas;
+
     protected $signature = 'ec:migrate-vagas
                             {--matriz= : ID da franquia Unidade Matriz (obrigatório)}
                             {--path= : Caminho da pasta storage/app do sistema antigo}
@@ -171,6 +173,9 @@ class MigrateVagas extends Command
                         $banner = true;
                     }
                 }
+
+                $this->preservarDatas('vagas', $vaga->id,
+                    $old->created_date ?: $old->created_at, $old->updated_at);
 
                 return compact('vaga', 'status', 'banner');
             });

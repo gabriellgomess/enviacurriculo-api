@@ -34,6 +34,8 @@ use App\Models\CandidatoDocumento;
  */
 class MigrateCandidates extends Command
 {
+    use \App\Console\Commands\Concerns\PreservaDatas;
+
     protected $signature = 'ec:migrate-candidates
                             {--path= : Caminho da pasta storage/app do sistema antigo}
                             {--dry-run : Apenas simula, sem gravar nada}
@@ -134,11 +136,11 @@ class MigrateCandidates extends Command
                             'franquia_id'              => null,   // decisões 17, I e N
                             'telefone'                 => $this->mapTelefone($principal->person_phone),
                             'cep'                      => $this->mapCep($principal->cep),
-                            'rua'                      => $principal->street,
-                            'numero'                   => $principal->number,
-                            'complemento'              => $principal->complement,
-                            'bairro'                   => $principal->neighborhood,
-                            'cidade'                   => $principal->city,
+                            'rua'                      => $this->limitar($principal->street, 255),
+                            'numero'                   => $this->limitar($principal->number, 20),
+                            'complemento'              => $this->limitar($principal->complement, 100),
+                            'bairro'                   => $this->limitar($principal->neighborhood, 100),
+                            'cidade'                   => $this->limitar($principal->city, 255),
                             'estado'                   => $this->mapEstado($principal->state),
                             'experiencia_profissional' => $principal->professional_experience,
                             'educacao'                 => $principal->education,
@@ -150,6 +152,13 @@ class MigrateCandidates extends Command
                             'active'                   => true,
                         ]
                     );
+
+                    // Data original do cadastro no sistema antigo
+                    $criadoEm = $principal->created_at ?: $principal->created_date;
+                    $this->preservarDatas('candidatos', $candidato->id, $criadoEm, $principal->updated_at);
+                    if ($novoLogin) {
+                        $this->preservarDatas('users', $user->id, $criadoEm, $principal->updated_at);
+                    }
 
                     // Sem contexto o candidato não loga
                     if (!$ehAdmin) {
@@ -176,7 +185,7 @@ class MigrateCandidates extends Command
                             }
                         }
 
-                        CandidatoDocumento::updateOrCreate(
+                        $doc = CandidatoDocumento::updateOrCreate(
                             ['candidato_id' => $candidato->id, 'arquivo_path' => $destino],
                             [
                                 'tipo'         => 'curriculo',
@@ -184,6 +193,13 @@ class MigrateCandidates extends Command
                                 'tamanho_kb'   => (int) ceil(((int) $reg->file_size) / 1024),
                                 'ativo'        => $i === 0,   // só o mais recente fica ativo
                             ]
+                        );
+
+                        $this->preservarDatas(
+                            'candidato_documentos',
+                            $doc->id,
+                            $reg->created_at ?: $reg->created_date,
+                            $reg->updated_at
                         );
                         $docs++;
                     }
@@ -344,5 +360,16 @@ class MigrateCandidates extends Command
         $primeiro = trim(preg_split('/[;\/,]/', $phone)[0]);
         $d = preg_replace('/\D/', '', $primeiro);
         return substr($d ?: $primeiro, 0, 20);
+    }
+
+    /**
+     * O sistema antigo não limitava os campos de endereço. Quatro currículos
+     * trazem texto de carta de apresentação no campo de complemento, que aqui
+     * aceita 100 caracteres.
+     */
+    private function limitar(?string $v, int $max): ?string
+    {
+        $v = trim((string) $v);
+        return $v === '' ? null : mb_substr($v, 0, $max);
     }
 }

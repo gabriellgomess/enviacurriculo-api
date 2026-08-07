@@ -33,6 +33,8 @@ use App\Models\UserContext;
  */
 class MigrateEmpresas extends Command
 {
+    use \App\Console\Commands\Concerns\PreservaDatas;
+
     protected $signature = 'ec:migrate-empresas
                             {--matriz= : ID da franquia Unidade Matriz (obrigatório)}
                             {--path= : Caminho da pasta storage/app do sistema antigo}
@@ -185,6 +187,9 @@ class MigrateEmpresas extends Command
                         );
                     }
                 }
+
+                $this->preservarDatas('empresas', $empresa->id,
+                    $old->created_at ?: $old->created_date, $old->updated_at);
 
                 return compact('empresa', 'oculta', 'logo', 'novoUsuario', 'colisaoAdmin');
             });

@@ -30,6 +30,8 @@ use App\Models\UserContext;
  */
 class MigrateFranquias extends Command
 {
+    use \App\Console\Commands\Concerns\PreservaDatas;
+
     protected $signature = 'ec:migrate-franquias
                             {--dry-run : Apenas simula, sem gravar nada}';
 
@@ -154,6 +156,11 @@ class MigrateFranquias extends Command
                     ['user_id' => $user->id, 'role' => 'franquia'],
                     ['context_id' => $franquia->id]
                 );
+
+                $this->preservarDatas('franquias', $franquia->id,
+                    $old->created_at ?: $old->created_date, $old->updated_at);
+                $this->preservarDatas('users', $user->id,
+                    $old->created_at ?: $old->created_date, $old->updated_at);
 
                 return ['franquia' => $franquia, 'novo' => !$jaExistia];
             });

@@ -23,6 +23,8 @@ use App\Models\Franquia;
  */
 class MigrateFollowups extends Command
 {
+    use \App\Console\Commands\Concerns\PreservaDatas;
+
     protected $signature = 'ec:migrate-followups
                             {--matriz= : ID da franquia Unidade Matriz (obrigatório)}
                             {--dry-run : Apenas simula, sem gravar nada}';
@@ -128,7 +130,7 @@ class MigrateFollowups extends Command
                 continue;
             }
 
-            CandidatoFollowup::updateOrCreate(
+            $fu = CandidatoFollowup::updateOrCreate(
                 [
                     'candidato_id' => $candidatoId,
                     'anotacao'     => $anotacao,
@@ -137,9 +139,11 @@ class MigrateFollowups extends Command
                 [
                     'franquia_id' => $matrizId,
                     'criado_por'  => null,
-                    'created_at'  => $old->created_at,
                 ]
             );
+
+            $this->preservarDatas('candidato_followups', $fu->id,
+                $old->created_at, $old->updated_at);
 
             $migrados++;
             $bar->advance();

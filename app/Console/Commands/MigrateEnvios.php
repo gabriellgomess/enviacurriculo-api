@@ -23,6 +23,8 @@ use App\Models\CandidatoDocumento;
  */
 class MigrateEnvios extends Command
 {
+    use \App\Console\Commands\Concerns\PreservaDatas;
+
     protected $signature = 'ec:migrate-envios
                             {--dry-run : Apenas simula, sem gravar nada}';
 
@@ -142,7 +144,7 @@ class MigrateEnvios extends Command
                 $old->observations ?: null,
             ])));
 
-            Envio::updateOrCreate(
+            $envio = Envio::updateOrCreate(
                 ['candidato_id' => $candidatoId, 'vaga_id' => $vagaId],
                 [
                     'curriculo_id'     => $curriculoId,
@@ -152,9 +154,11 @@ class MigrateEnvios extends Command
                     'observacao'       => $observacao ?: null,
                     'salario_aprovado' => $old->salary ?: null,
                     'data_admissao'    => $old->admission_date ?: null,
-                    'created_at'       => $old->linked_at ?: $old->created_at,
                 ]
             );
+
+            $this->preservarDatas('envios', $envio->id,
+                $old->linked_at ?: $old->created_at, $old->updated_at);
 
             $migrados++;
             $bar->advance();

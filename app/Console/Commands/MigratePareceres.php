@@ -24,6 +24,8 @@ use App\Models\Franquia;
  */
 class MigratePareceres extends Command
 {
+    use \App\Console\Commands\Concerns\PreservaDatas;
+
     protected $signature = 'ec:migrate-pareceres
                             {--matriz= : ID da franquia Unidade Matriz (obrigatório)}
                             {--dry-run : Apenas simula, sem gravar nada}';
@@ -141,7 +143,7 @@ class MigratePareceres extends Command
             $dados['origem'] = 'migracao';
             $dados['id_antigo'] = $old->id;
 
-            CandidatoParecer::updateOrCreate(
+            $parecer = CandidatoParecer::updateOrCreate(
                 ['candidato_id' => $candidatoId, 'criado_por' => $criadoPor, 'texto' => (string) $old->opinion],
                 [
                     'franquia_id'      => $franquiaId,
@@ -152,6 +154,9 @@ class MigratePareceres extends Command
                     'dados'            => $dados,
                 ]
             );
+
+            $this->preservarDatas('candidato_pareceres', $parecer->id,
+                $old->created_at, $old->updated_at);
 
             $migrados++;
             if (!$ehFranquia) $naMatriz++;
