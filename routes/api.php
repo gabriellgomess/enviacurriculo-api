@@ -516,6 +516,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('plano/utilizacao',[\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'planoUtilizacao']);
         Route::post('plano/upgrade',  [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'upgrade'])
             ->withoutMiddleware('empresa.plataforma'); // caminho de saída do produto Agência
+        Route::post('plano/upgrade/pagamento', [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'gerarPagamento'])
+            ->withoutMiddleware('empresa.plataforma');
+        Route::get('plano/upgrade/pagamento/{payment_id}/status', [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'statusPagamento'])
+            ->withoutMiddleware('empresa.plataforma');
         Route::get('faturamentos',    [\App\Http\Controllers\Api\EmpresaPlanoController::class, 'faturamentos']);
         Route::get('mensalidades',    [\App\Http\Controllers\Api\EmpresaRelatorioController::class, 'mensalidades']);
 
