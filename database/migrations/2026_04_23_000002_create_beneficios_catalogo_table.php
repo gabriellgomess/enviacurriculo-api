@@ -20,28 +20,28 @@ return new class extends Migration
         // Benefícios padrão
         $beneficios = [
             // saude
-            ['nome' => 'Plano de Saúde',       'icone' => '🏥', 'categoria' => 'saude'],
-            ['nome' => 'Plano Odontológico',    'icone' => '🦷', 'categoria' => 'saude'],
-            ['nome' => 'Seguro de Vida',        'icone' => '🛡️', 'categoria' => 'saude'],
-            ['nome' => 'Gympass / Wellhub',     'icone' => '🏋️', 'categoria' => 'saude'],
+            ['nome' => 'Plano de Saúde',       'icone' => 'Heart', 'categoria' => 'saude'],
+            ['nome' => 'Plano Odontológico',    'icone' => 'Heart', 'categoria' => 'saude'],
+            ['nome' => 'Seguro de Vida',        'icone' => 'Heart', 'categoria' => 'saude'],
+            ['nome' => 'Gympass / Wellhub',     'icone' => 'Heart', 'categoria' => 'saude'],
             // alimentacao
-            ['nome' => 'Vale-Alimentação',      'icone' => '🛒', 'categoria' => 'alimentacao'],
-            ['nome' => 'Vale-Refeição',         'icone' => '🍽️', 'categoria' => 'alimentacao'],
-            ['nome' => 'Refeitório na Empresa', 'icone' => '🏢', 'categoria' => 'alimentacao'],
+            ['nome' => 'Vale-Alimentação',      'icone' => 'Utensils', 'categoria' => 'alimentacao'],
+            ['nome' => 'Vale-Refeição',         'icone' => 'Utensils', 'categoria' => 'alimentacao'],
+            ['nome' => 'Refeitório na Empresa', 'icone' => 'Utensils', 'categoria' => 'alimentacao'],
             // transporte
-            ['nome' => 'Vale-Transporte',       'icone' => '🚌', 'categoria' => 'transporte'],
-            ['nome' => 'Auxílio Combustível',   'icone' => '⛽', 'categoria' => 'transporte'],
-            ['nome' => 'Estacionamento',        'icone' => '🅿️', 'categoria' => 'transporte'],
+            ['nome' => 'Vale-Transporte',       'icone' => 'Car', 'categoria' => 'transporte'],
+            ['nome' => 'Auxílio Combustível',   'icone' => 'Car', 'categoria' => 'transporte'],
+            ['nome' => 'Estacionamento',        'icone' => 'Car', 'categoria' => 'transporte'],
             // educacao
-            ['nome' => 'Auxílio Educação',      'icone' => '🎓', 'categoria' => 'educacao'],
-            ['nome' => 'Cursos e Treinamentos', 'icone' => '📚', 'categoria' => 'educacao'],
-            ['nome' => 'Bolsa de Estudos',      'icone' => '📖', 'categoria' => 'educacao'],
+            ['nome' => 'Auxílio Educação',      'icone' => 'GraduationCap', 'categoria' => 'educacao'],
+            ['nome' => 'Cursos e Treinamentos', 'icone' => 'GraduationCap', 'categoria' => 'educacao'],
+            ['nome' => 'Bolsa de Estudos',      'icone' => 'GraduationCap', 'categoria' => 'educacao'],
             // outros
-            ['nome' => 'Home Office',           'icone' => '🏠', 'categoria' => 'outros'],
-            ['nome' => 'Horário Flexível',      'icone' => '⏰', 'categoria' => 'outros'],
-            ['nome' => 'PLR / Bônus',           'icone' => '💰', 'categoria' => 'outros'],
-            ['nome' => 'Day Off Aniversário',   'icone' => '🎂', 'categoria' => 'outros'],
-            ['nome' => 'Previdência Privada',   'icone' => '💼', 'categoria' => 'outros'],
+            ['nome' => 'Home Office',           'icone' => 'Gift', 'categoria' => 'outros'],
+            ['nome' => 'Horário Flexível',      'icone' => 'Gift', 'categoria' => 'outros'],
+            ['nome' => 'PLR / Bônus',           'icone' => 'Gift', 'categoria' => 'outros'],
+            ['nome' => 'Day Off Aniversário',   'icone' => 'Gift', 'categoria' => 'outros'],
+            ['nome' => 'Previdência Privada',   'icone' => 'Gift', 'categoria' => 'outros'],
         ];
 
         foreach ($beneficios as $b) {

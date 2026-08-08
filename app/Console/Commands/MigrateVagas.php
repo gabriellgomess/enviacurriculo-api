@@ -216,9 +216,15 @@ class MigrateVagas extends Command
             $resultado = DB::transaction(function () use ($old, $empresaId, $franquiaVaga, $matrizId, $path) {
                 $status = $this->mapStatus($old);
 
-                // Requisitantes vêm em JSON: ["nome","email"]
+                // Requisitantes vêm como JSON em texto. A coluna nova tem cast
+                // 'array', então precisa ir decodificada: passar a string faz o
+                // Eloquent codificar de novo e o painel recebe texto no lugar
+                // de lista — o que quebra a validação ao salvar a vaga.
                 $req = json_decode($old->requisitantes ?? '[]', true);
-                $primeiro = is_array($req) && !empty($req) ? $req[0] : [];
+                $req = is_array($req) ? array_values(array_filter($req, fn($r) =>
+                    is_array($r) && (!empty($r['nome']) || !empty($r['email']))
+                )) : [];
+                $primeiro = $req[0] ?? [];
 
                 $vaga = Vaga::updateOrCreate(
                     ['codigo' => 'VG-' . str_pad((string) $old->id, 5, '0', STR_PAD_LEFT)],
@@ -250,9 +256,9 @@ class MigrateVagas extends Command
                         // esconde o nome da empresa.
                         'canal'             => 'agencia',
                         'ocultar_empresa'   => true,
-                        'nome_requisitante' => $primeiro['nome']  ?? null,
-                        'email_requisitante'=> $primeiro['email'] ?? null,
-                        'requisitantes'     => $old->requisitantes,
+                        'nome_requisitante' => $this->limitar($primeiro['nome']  ?? null, 255),
+                        'email_requisitante'=> $this->limitar($primeiro['email'] ?? null, 255),
+                        'requisitantes'     => $req ?: null,
                         'data_abertura'     => $old->created_date ? substr($old->created_date, 0, 10) : null,
                         'data_fechamento'   => $old->closed_date  ? substr($old->closed_date, 0, 10)  : null,
                     ]
