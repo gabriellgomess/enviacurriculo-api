@@ -35,12 +35,37 @@ class MigratePareceres extends Command
     /** ec_consultants.id dos que viraram franquia (decisão O). */
     private const CONSULTORES = [10, 13, 15, 16, 32, 54, 112, 125, 146, 147, 171, 186];
 
-    /** Campos do formulário antigo que vão para a coluna `dados` (JSON). */
-    private const CAMPOS_DADOS = [
-        'cpf', 'candidate_address', 'residence_time', 'candidate_phone',
-        'candidate_email', 'desired_position', 'desired_schedule', 'birth_date',
-        'marital_status', 'children_count', 'children_ages', 'education_level',
-        'transportation_method', 'salary_expectation', 'previous_companies',
+    /**
+     * Campo do sistema antigo => chave que o painel espera em `dados`.
+     *
+     * O painel da franquia lê as chaves em português. Migrar com os nomes
+     * originais em inglês fazia o parecer sair sem o formulário na impressão.
+     */
+    private const MAPA_CAMPOS = [
+        'cpf'                   => 'cpf',
+        'candidate_address'     => 'endereco',
+        'residence_time'        => 'tempo_residencia',
+        'candidate_phone'       => 'telefone',
+        'candidate_email'       => 'email',
+        'desired_position'      => 'cargo_pretendido',
+        'desired_schedule'      => 'horario_pretendido',
+        'birth_date'            => 'data_nascimento',
+        'marital_status'        => 'estado_civil',
+        'children_count'        => 'filhos',
+        'children_ages'         => 'filhos_idades',
+        'education_level'       => 'escolaridade',
+        'transportation_method' => 'meio_deslocamento',
+        'salary_expectation'    => 'pretensao_salarial',
+    ];
+
+    /** Chaves de cada experiência dentro de `previous_companies`. */
+    private const MAPA_EXPERIENCIA = [
+        'company_name' => 'nome_empresa',
+        'position'     => 'cargo',
+        'period_start' => 'periodo_de',
+        'period_end'   => 'periodo_ate',
+        'activity'     => 'atividade',
+        'exit_reason'  => 'motivo_saida',
     ];
 
     public function handle(): int
@@ -131,10 +156,16 @@ class MigratePareceres extends Command
 
             // Decisão H: só preserva o nome de quem virou franquia
             $dados = [];
-            foreach (self::CAMPOS_DADOS as $campo) {
-                if (isset($old->$campo) && $old->$campo !== null && $old->$campo !== '') {
-                    $dados[$campo] = $this->talvezJson($old->$campo);
+            foreach (self::MAPA_CAMPOS as $origem => $destino) {
+                if (isset($old->$origem) && $old->$origem !== null && $old->$origem !== '') {
+                    $dados[$destino] = $this->talvezJson($old->$origem);
                 }
+            }
+
+            // Experiências anteriores: array de objetos, chaves também traduzidas
+            $experiencias = $this->mapearExperiencias($old->previous_companies ?? null);
+            if ($experiencias) {
+                $dados['experiencias'] = $experiencias;
             }
             if ($ehFranquia && !empty($old->consultant_name)) {
                 $dados['consultant_name'] = $old->consultant_name;
@@ -212,6 +243,28 @@ class MigratePareceres extends Command
     {
         return DB::table('user_contexts')
             ->where('role', 'franquia')->where('context_id', $franquiaId)->value('user_id');
+    }
+
+    /** Traduz as chaves de cada experiência anterior. */
+    private function mapearExperiencias($valor): array
+    {
+        $lista = $this->talvezJson($valor);
+        if (!is_array($lista)) return [];
+
+        $saida = [];
+        foreach ($lista as $item) {
+            if (!is_array($item)) continue;
+
+            $traduzido = [];
+            foreach (self::MAPA_EXPERIENCIA as $origem => $destino) {
+                if (isset($item[$origem]) && $item[$origem] !== '') {
+                    $traduzido[$destino] = $item[$origem];
+                }
+            }
+            if ($traduzido) $saida[] = $traduzido;
+        }
+
+        return $saida;
     }
 
     /** Alguns campos vêm como JSON em texto (children_ages, previous_companies). */
