@@ -180,26 +180,29 @@ class MigratePareceres extends Command
         return 0;
     }
 
-    /** ec_users.id do consultor → [franquia_id, user_id] no sistema novo. */
+    /** ec_users.id do consultor (antigo) => [franquia_id, user_id] no novo. */
     private function mapearAutores(): array
     {
-        $antigos = DB::connection('mysql_antigo')
-            ->table('ec_consultants')
-            ->whereIn('id', self::CONSULTORES)
-            ->get(['id', 'user_id', 'email']);
+        $arquivo = storage_path('app/public/migracao/mapa-franquias.json');
+
+        if (!is_file($arquivo)) {
+            $this->error('Mapa de franquias não encontrado. Rode o Passo 1 antes.');
+            return [[], []];
+        }
+
+        $mapa = json_decode(file_get_contents($arquivo), true) ?: [];
 
         $porFranquia = [];
         $porUser     = [];
 
-        foreach ($antigos as $c) {
-            $f = Franquia::where('email', $c->email)->first();
-            if (!$f) continue;
+        foreach ($mapa as $entrada) {
+            $antigo = (string) ($entrada['user_id_antigo'] ?? '');
+            if ($antigo === '') continue;
 
-            $ctx = DB::table('user_contexts')
-                ->where('role', 'franquia')->where('context_id', $f->id)->first();
-
-            $porFranquia[$c->user_id] = $f->id;
-            if ($ctx) $porUser[$c->user_id] = $ctx->user_id;
+            $porFranquia[$antigo] = $entrada['franquia_id'];
+            if (!empty($entrada['user_id'])) {
+                $porUser[$antigo] = $entrada['user_id'];
+            }
         }
 
         return [$porFranquia, $porUser];

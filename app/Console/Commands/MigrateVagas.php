@@ -47,18 +47,17 @@ class MigrateVagas extends Command
      */
     private function mapearConsultores(): array
     {
-        $antigos = DB::connection('mysql_antigo')
-            ->table('ec_consultants')
-            ->whereIn('id', self::CONSULTORES)
-            ->get(['id', 'email']);
+        $arquivo = storage_path('app/public/migracao/mapa-franquias.json');
 
-        $mapa = [];
-        foreach ($antigos as $c) {
-            $f = Franquia::where('email', $c->email)->first();
-            if ($f) $mapa[(string) $c->id] = $f->id;
+        if (!is_file($arquivo)) {
+            $this->error('Mapa de franquias não encontrado. Rode o Passo 1 antes.');
+            return [];
         }
 
-        return $mapa;
+        $mapa = json_decode(file_get_contents($arquivo), true) ?: [];
+
+        // ec_consultants.id => franquia_id
+        return array_map(fn($v) => $v['franquia_id'], $mapa);
     }
 
     /** Franquia responsável pela vaga, ou a Matriz se não houver atribuição. */

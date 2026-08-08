@@ -13,6 +13,7 @@ class Franquia extends Model
 
     protected $fillable = [
         // Identificação
+        'id_antigo',
         'codigo',
         'tipo',
         // Dados pessoais do franqueado

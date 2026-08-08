@@ -91,18 +91,20 @@ class MigrateFranquias extends Command
                     Str::limit($old->name, 30),
                     $old->email,
                     ($old->city ?: '—') . '/' . ($old->state ?: '—'),
-                    Franquia::where('email', $old->email)->exists() ? 'já existe' : 'criar',
+                    Franquia::where('id_antigo', $old->id)->exists() ? 'já existe' : 'criar',
                 ];
                 continue;
             }
 
             $resultado = DB::transaction(function () use ($old) {
-                $jaExistia = Franquia::where('email', $old->email)->exists();
+                $jaExistia = Franquia::where('id_antigo', $old->id)->exists();
 
-                // Decisão 1: sempre o nome da pessoa
+                // Decisão 1: sempre o nome da pessoa.
+                // A chave é o id do consultor, não o e-mail: e-mail muda.
                 $franquia = Franquia::updateOrCreate(
-                    ['email' => $old->email],
+                    ['id_antigo' => $old->id],
                     [
+                        'email'                => $old->email,
                         'nome'                 => $old->name,
                         'responsavel'          => $old->name,
                         'tipo'                 => 'start',
@@ -191,8 +193,28 @@ class MigrateFranquias extends Command
             return 0;
         }
 
+        // Mapa para os Passos 3, 5 e 7
+        $mapa = [];
+        foreach ($consultores as $old) {
+            $f = Franquia::where('id_antigo', $old->id)->first();
+            if (!$f) continue;
+            $ctx = DB::table('user_contexts')
+                ->where('role', 'franquia')->where('context_id', $f->id)->first();
+            $mapa[(string) $old->id] = [
+                'franquia_id'    => $f->id,
+                'user_id'        => $ctx->user_id ?? null,
+                'user_id_antigo' => $old->user_id,
+            ];
+        }
+        @mkdir(storage_path('app/public/migracao'), 0775, true);
+        file_put_contents(
+            storage_path('app/public/migracao/mapa-franquias.json'),
+            json_encode($mapa, JSON_PRETTY_PRINT)
+        );
+
         $this->newLine();
         $this->info("Concluído: {$criadas} criada(s), {$atualizadas} atualizada(s).");
+        $this->line('  mapa salvo: storage/app/public/migracao/mapa-franquias.json');
 
         // Alerta sobre cadastros incompletos
         $semEndereco = Franquia::whereIn('email', $consultores->pluck('email'))
