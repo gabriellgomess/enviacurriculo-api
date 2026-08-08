@@ -34,6 +34,49 @@ class MigrateVagas extends Command
 
     protected $description = 'Migra as vagas do sistema antigo';
 
+    /** ec_consultants.id dos que viraram franquia (decisão O). */
+    private const CONSULTORES = [10, 13, 15, 16, 32, 54, 112, 125, 146, 147, 171, 186];
+
+    /**
+     * ec_consultants.id → franquia_id no sistema novo.
+     *
+     * `ec_jobs.consultant_ids` guarda quem atendeu a vaga. Sem essa atribuição
+     * o franqueado entra e não vê nem as vagas nem o histórico de vinculações,
+     * porque a visibilidade em FranquiaCandidatoController parte das vagas
+     * da franquia.
+     */
+    private function mapearConsultores(): array
+    {
+        $antigos = DB::connection('mysql_antigo')
+            ->table('ec_consultants')
+            ->whereIn('id', self::CONSULTORES)
+            ->get(['id', 'email']);
+
+        $mapa = [];
+        foreach ($antigos as $c) {
+            $f = Franquia::where('email', $c->email)->first();
+            if ($f) $mapa[(string) $c->id] = $f->id;
+        }
+
+        return $mapa;
+    }
+
+    /** Franquia responsável pela vaga, ou a Matriz se não houver atribuição. */
+    private function franquiaDaVaga($old, array $mapaConsultores, int $matrizId): int
+    {
+        $ids = json_decode($old->consultant_ids ?? '[]', true);
+        if (!is_array($ids)) return $matrizId;
+
+        foreach ($ids as $id) {
+            $chave = (string) $id;
+            if (isset($mapaConsultores[$chave])) {
+                return $mapaConsultores[$chave];
+            }
+        }
+
+        return $matrizId;
+    }
+
     public function handle(): int
     {
         $matrizId = (int) $this->option('matriz');
@@ -73,11 +116,16 @@ class MigrateVagas extends Command
         $vagas = DB::connection('mysql_antigo')->table('ec_jobs')->orderBy('id')->get();
         $this->line("  vagas no banco antigo: {$vagas->count()}");
 
+        $mapaConsultores = $this->mapearConsultores();
+        $this->line('  franquias mapeadas por consultant_ids: ' . count($mapaConsultores));
+
         // ---------- Simulação ----------
         if ($dry) {
             $semEmpresa = $vagas->filter(fn($v) => empty($mapaEmpresas[$v->company_id]))->count();
             $porStatus  = $vagas->groupBy(fn($v) => $this->mapStatus($v))->map->count();
             $comBanner  = $vagas->filter(fn($v) => !empty($v->banner_storage_location))->count();
+            $naMatriz   = $vagas->filter(fn($v) =>
+                $this->franquiaDaVaga($v, $mapaConsultores, $matrizId) === $matrizId)->count();
 
             $this->newLine();
             $this->table(['Situação no sistema novo', 'Total'],
@@ -85,8 +133,10 @@ class MigrateVagas extends Command
 
             $this->newLine();
             $this->table(['Indicador', 'Total'], [
-                ['a migrar',                  $vagas->count()],
-                ['com banner no banco',       $comBanner],
+                ['a migrar',                   $vagas->count()],
+                ['atribuídas às 12 franquias', $vagas->count() - $naMatriz],
+                ['ficam na Unidade Matriz',    $naMatriz],
+                ['com banner no banco',        $comBanner],
                 ['sem empresa correspondente', $semEmpresa],
             ]);
 
@@ -109,6 +159,7 @@ class MigrateVagas extends Command
         $migradas  = 0;
         $puladas   = 0;
         $comBanner = 0;
+        $naMatriz  = 0;
         $contagem  = ['publicada' => 0, 'fechada' => 0, 'pausada' => 0];
 
         foreach ($vagas as $old) {
@@ -120,7 +171,9 @@ class MigrateVagas extends Command
                 continue;
             }
 
-            $resultado = DB::transaction(function () use ($old, $empresaId, $matrizId, $path) {
+            $franquiaVaga = $this->franquiaDaVaga($old, $mapaConsultores, $matrizId);
+
+            $resultado = DB::transaction(function () use ($old, $empresaId, $franquiaVaga, $matrizId, $path) {
                 $status = $this->mapStatus($old);
 
                 // Requisitantes vêm em JSON: ["nome","email"]
@@ -136,7 +189,7 @@ class MigrateVagas extends Command
                         'beneficios'        => $old->beneficios,
                         'observacoes'       => $this->mapObservacoes($old),
                         'empresa_id'        => $empresaId,
-                        'franquia_id'       => $matrizId,
+                        'franquia_id'       => $franquiaVaga,
                         'tipo_contrato'     => $this->mapTipoContrato($old->tipo_contratacao),
                         'regime_trabalho'   => 'presencial',
                         'horario_trabalho'  => $this->limitar($old->horario_trabalho, 50),
@@ -177,12 +230,13 @@ class MigrateVagas extends Command
                 $this->preservarDatas('vagas', $vaga->id,
                     $old->created_date ?: $old->created_at, $old->updated_at);
 
-                return compact('vaga', 'status', 'banner');
+                return compact('vaga', 'status', 'banner', 'franquiaVaga');
             });
 
             $mapa[$old->id] = $resultado['vaga']->id;
             $contagem[$resultado['status']] = ($contagem[$resultado['status']] ?? 0) + 1;
             if ($resultado['banner']) $comBanner++;
+            if ($resultado['franquiaVaga'] === $matrizId) $naMatriz++;
             $migradas++;
 
             $bar->advance();
@@ -196,6 +250,8 @@ class MigrateVagas extends Command
             ['publicadas',        $contagem['publicada'] ?? 0],
             ['fechadas',          $contagem['fechada']   ?? 0],
             ['pausadas (excluídas no antigo)', $contagem['pausada'] ?? 0],
+            ['atribuídas às 12 franquias', $migradas - $naMatriz],
+            ['ficam na Unidade Matriz',    $naMatriz],
             ['com banner',        $comBanner],
             ['puladas (sem empresa)', $puladas],
         ]);
