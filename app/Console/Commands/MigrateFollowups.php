@@ -43,7 +43,7 @@ class MigrateFollowups extends Command
             return 1;
         }
 
-        $mapaCand = $this->carregarMapa('migracao-mapa-candidatos.json');
+        $mapaCand = $this->carregarMapa('mapa-candidatos.json');
         if ($mapaCand === null) return 1;
 
         $this->newLine();
@@ -165,7 +165,7 @@ class MigrateFollowups extends Command
 
     private function carregarMapa(string $arquivo): ?array
     {
-        $caminho = storage_path("app/{$arquivo}");
+        $caminho = storage_path("app/public/migracao/{$arquivo}");
         if (!is_file($caminho)) {
             $this->error("Mapa não encontrado: {$caminho}");
             $this->error('Rode o Passo 4 (ec:migrate-candidates) antes.');

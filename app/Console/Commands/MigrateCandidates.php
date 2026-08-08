@@ -249,7 +249,8 @@ class MigrateCandidates extends Command
             if (count($erros) > 20) $this->line('  ... e mais ' . (count($erros) - 20));
         }
 
-        $arquivo = storage_path('app/migracao-mapa-candidatos.json');
+        @mkdir(storage_path('app/public/migracao'), 0775, true);
+        $arquivo = storage_path('app/public/migracao/mapa-candidatos.json');
         file_put_contents($arquivo, json_encode($mapa, JSON_PRETTY_PRINT));
         $this->newLine();
         $this->info('Mapa id_curriculo_antigo → candidato_id salvo em:');

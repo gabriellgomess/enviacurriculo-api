@@ -49,10 +49,10 @@ class MigrateEnvios extends Command
     {
         $dry = (bool) $this->option('dry-run');
 
-        $mapaCand = $this->carregarMapa('migracao-mapa-candidatos.json', 'Passo 4');
+        $mapaCand = $this->carregarMapa('mapa-candidatos.json', 'Passo 4');
         if ($mapaCand === null) return 1;
 
-        $mapaVagas = $this->carregarMapa('migracao-mapa-vagas.json', 'Passo 3');
+        $mapaVagas = $this->carregarMapa('mapa-vagas.json', 'Passo 3');
         if ($mapaVagas === null) return 1;
 
         $this->newLine();
@@ -180,7 +180,7 @@ class MigrateEnvios extends Command
 
     private function carregarMapa(string $arquivo, string $passo): ?array
     {
-        $caminho = storage_path("app/{$arquivo}");
+        $caminho = storage_path("app/public/migracao/{$arquivo}");
         if (!is_file($caminho)) {
             $this->error("Mapa não encontrado: {$caminho}");
             $this->error("Rode o {$passo} antes.");

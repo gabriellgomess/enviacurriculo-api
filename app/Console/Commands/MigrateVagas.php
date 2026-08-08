@@ -89,7 +89,7 @@ class MigrateVagas extends Command
         }
 
         // Mapa do Passo 2
-        $arquivoMapa = storage_path('app/migracao-mapa-empresas.json');
+        $arquivoMapa = storage_path('app/public/migracao/mapa-empresas.json');
         if (!is_file($arquivoMapa)) {
             $this->error('Mapa de empresas não encontrado em:');
             $this->error("  {$arquivoMapa}");
@@ -256,7 +256,8 @@ class MigrateVagas extends Command
             ['puladas (sem empresa)', $puladas],
         ]);
 
-        $arquivo = storage_path('app/migracao-mapa-vagas.json');
+        @mkdir(storage_path('app/public/migracao'), 0775, true);
+        $arquivo = storage_path('app/public/migracao/mapa-vagas.json');
         file_put_contents($arquivo, json_encode($mapa, JSON_PRETTY_PRINT));
         $this->newLine();
         $this->info('Mapa id_antigo → vaga_id salvo em:');

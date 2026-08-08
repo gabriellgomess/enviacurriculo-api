@@ -237,7 +237,8 @@ class MigrateEmpresas extends Command
         }
 
         // Mapa para o Passo 3
-        $arquivo = storage_path('app/migracao-mapa-empresas.json');
+        @mkdir(storage_path('app/public/migracao'), 0775, true);
+        $arquivo = storage_path('app/public/migracao/mapa-empresas.json');
         file_put_contents($arquivo, json_encode($mapa, JSON_PRETTY_PRINT));
         $this->newLine();
         $this->info("Mapa id_antigo → empresa_id salvo em:");

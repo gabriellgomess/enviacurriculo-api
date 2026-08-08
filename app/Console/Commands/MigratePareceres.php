@@ -53,13 +53,13 @@ class MigratePareceres extends Command
             return 1;
         }
 
-        $mapaCand = $this->carregarMapa('migracao-mapa-candidatos.json', 'Passo 4 (ec:migrate-candidates)');
+        $mapaCand = $this->carregarMapa('mapa-candidatos.json', 'Passo 4 (ec:migrate-candidates)');
         if ($mapaCand === null) return 1;
 
-        $mapaVagas = $this->carregarMapa('migracao-mapa-vagas.json', 'Passo 3 (ec:migrate-vagas)');
+        $mapaVagas = $this->carregarMapa('mapa-vagas.json', 'Passo 3 (ec:migrate-vagas)');
         if ($mapaVagas === null) return 1;
 
-        $mapaEmpresas = $this->carregarMapa('migracao-mapa-empresas.json', 'Passo 2 (ec:migrate-empresas)');
+        $mapaEmpresas = $this->carregarMapa('mapa-empresas.json', 'Passo 2 (ec:migrate-empresas)');
         if ($mapaEmpresas === null) return 1;
 
         $this->newLine();
@@ -228,7 +228,7 @@ class MigratePareceres extends Command
 
     private function carregarMapa(string $arquivo, string $passo): ?array
     {
-        $caminho = storage_path("app/{$arquivo}");
+        $caminho = storage_path("app/public/migracao/{$arquivo}");
         if (!is_file($caminho)) {
             $this->error("Mapa não encontrado: {$caminho}");
             $this->error("Rode o {$passo} antes.");
