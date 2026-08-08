@@ -46,7 +46,12 @@ class EmpresaController extends Controller
             $query->where('franquia_id', $request->franquia_id);
         }
 
-        $empresas = $query->orderBy('razao_social')->paginate(20);
+        // O select de empresas do filtro de vagas pede per_page=1000; sem honrar
+        // o parâmetro, só as 20 primeiras das 217 apareciam na lista.
+        $porPagina = (int) $request->input('per_page', 20);
+        $porPagina = max(1, min($porPagina, 1000));
+
+        $empresas = $query->orderBy('razao_social')->paginate($porPagina);
 
         $meta = [
             'total'     => Empresa::count(),
@@ -82,7 +87,7 @@ class EmpresaController extends Controller
             'cidade'                => 'nullable|string|max:100',
             'estado'                => 'nullable|string|size:2',
             'prazo_vencimento_dias' => 'nullable|integer|min:1',
-            'reposicao_dias'        => 'nullable|integer|min:1',
+            'reposicao_dias'        => 'nullable|integer|min:0',
             'franquia_id'           => 'nullable|exists:franquias,id',
             'password'              => 'nullable|string|min:6',
             'logo'                  => 'nullable|image|max:2048',
@@ -162,7 +167,7 @@ class EmpresaController extends Controller
             'cidade'                => 'nullable|string|max:100',
             'estado'                => 'nullable|string|size:2',
             'prazo_vencimento_dias' => 'nullable|integer|min:1',
-            'reposicao_dias'        => 'nullable|integer|min:1',
+            'reposicao_dias'        => 'nullable|integer|min:0',
             'franquia_id'           => 'nullable|exists:franquias,id',
             'password'              => 'nullable|string|min:6',
             'logo'                  => 'nullable|image|max:2048',

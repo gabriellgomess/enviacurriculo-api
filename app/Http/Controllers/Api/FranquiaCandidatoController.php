@@ -88,13 +88,30 @@ class FranquiaCandidatoController extends Controller
     }
 
     /**
-     * Candidatos visiveis para a franquia: os que tem envio em vagas da
-     * franquia OU os cadastrados/possuidos por ela (banco proprio).
+     * Envios da franquia: os que ela registrou (`franquia_id`) mais os das
+     * vagas dela. Usado em todas as telas de historico.
+     */
+    private function escopoEnvios($query, int $franquiaId, \Illuminate\Support\Collection $vagaIds)
+    {
+        return $query->where(function ($q) use ($franquiaId, $vagaIds) {
+            $q->where('franquia_id', $franquiaId)
+              ->orWhereIn('vaga_id', $vagaIds);
+        });
+    }
+
+    /**
+     * Candidatos visiveis para a franquia: os que tem envio DELA, os que tem
+     * envio em vagas dela, ou os cadastrados/possuidos por ela.
+     *
+     * O envio carrega a propria franquia responsavel (`envios.franquia_id`).
+     * Derivar apenas da vaga estava errado para o acervo migrado: no sistema
+     * antigo a vaga era um pool compartilhado entre dezenas de consultores.
      */
     private function candidatosVisiveisQuery(int $franquiaId, \Illuminate\Support\Collection $vagaIds)
     {
         return Candidato::where(function ($q) use ($franquiaId, $vagaIds) {
-            $q->whereHas('envios', fn($s) => $s->whereIn('vaga_id', $vagaIds))
+            $q->whereHas('envios', fn($s) => $s->where('franquia_id', $franquiaId))
+              ->orWhereHas('envios', fn($s) => $s->whereIn('vaga_id', $vagaIds))
               ->orWhere('franquia_id', $franquiaId)
               ->orWhereNull('franquia_id'); // candidatos do banco global (admin) visíveis a todas as franquias
         });
@@ -299,7 +316,7 @@ class FranquiaCandidatoController extends Controller
             'disponibilidade'  => $c->disponibilidade,
             'franquia_responsavel' => $c->franquia?->nome,
             'curriculo_ativo'  => null, // carregado on-demand no show
-            'ultimo_envio'     => $c->envios()->whereIn('vaga_id', $vagaIds)->latest()->value('created_at'),
+            'ultimo_envio'     => $this->escopoEnvios($c->envios(), $franquiaId, $vagaIds)->latest()->value('created_at'),
             'tem_parecer'      => (bool) $c->tem_parecer,
             'created_at'       => $c->created_at,
         ]);
@@ -321,8 +338,11 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $vagaIds    = $this->vagaIds($franquiaId);
 
-        $query = Envio::with(['candidato.user:id,name', 'candidato.franquia:id,nome', 'vaga:id,titulo,empresa_id,tipo_contrato', 'vaga.empresa:id,razao_social'])
-            ->whereIn('vaga_id', $vagaIds);
+        $query = $this->escopoEnvios(
+            Envio::with(['candidato.user:id,name', 'candidato.franquia:id,nome', 'vaga:id,titulo,empresa_id,tipo_contrato', 'vaga.empresa:id,razao_social']),
+            $franquiaId,
+            $vagaIds
+        );
 
         $envios = $query->orderByDesc('created_at')->get();
 
@@ -595,9 +615,12 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $vagaIds    = $this->vagaIds($franquiaId);
 
-        $envios = Envio::with(['vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social,nome_fantasia'])
-            ->where('candidato_id', $id)
-            ->whereIn('vaga_id', $vagaIds)
+        $envios = $this->escopoEnvios(
+                Envio::with(['vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social,nome_fantasia'])
+                    ->where('candidato_id', $id),
+                $franquiaId,
+                $vagaIds
+            )
             ->orderByDesc('created_at')
             ->get()
             ->map(fn($e) => [

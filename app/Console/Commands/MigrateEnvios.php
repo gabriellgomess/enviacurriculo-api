@@ -55,9 +55,13 @@ class MigrateEnvios extends Command
         $mapaVagas = $this->carregarMapa('mapa-vagas.json', 'Passo 3');
         if ($mapaVagas === null) return 1;
 
+        // ec_users.id do consultor (antigo) => franquia_id no sistema novo
+        $mapaAutores = $this->mapearAutores();
+
         $this->newLine();
         $this->info('PASSO 6 — Envios');
         $this->line('  modo: ' . ($dry ? 'SIMULAÇÃO' : 'EXECUÇÃO'));
+        $this->line('  franquias mapeadas: ' . count($mapaAutores));
         $this->newLine();
 
         try {
@@ -90,6 +94,7 @@ class MigrateEnvios extends Command
                 ['com anotação',             $vinculos->filter(fn($v) => !empty($v->notes) || !empty($v->observations))->count()],
                 ['sem candidato no mapa',    $semCand],
                 ['sem vaga no mapa',         $semVaga],
+                ['com franquia responsável', $vinculos->filter(fn($v) => isset($mapaAutores[$v->consultant_id]))->count()],
             ]);
 
             if ($semCand || $semVaga) {
@@ -110,6 +115,7 @@ class MigrateEnvios extends Command
         $migrados = 0;
         $puladas  = 0;
         $mesclados = 0;
+        $comFranquia = 0;
 
         // Um par candidato+vaga pode repetir depois da deduplicação de
         // candidatos (decisão D): o índice único não permite dois registros.
@@ -144,9 +150,12 @@ class MigrateEnvios extends Command
                 $old->observations ?: null,
             ])));
 
+            $franquiaId = $mapaAutores[$old->consultant_id] ?? null;
+
             $envio = Envio::updateOrCreate(
                 ['candidato_id' => $candidatoId, 'vaga_id' => $vagaId],
                 [
+                    'franquia_id'      => $franquiaId,
                     'curriculo_id'     => $curriculoId,
                     'status'           => $status,
                     'status_empresa'   => self::STATUS_EMPRESA[$old->status] ?? 'pendente',
@@ -161,6 +170,7 @@ class MigrateEnvios extends Command
                 $old->linked_at ?: $old->created_at, $old->updated_at);
 
             $migrados++;
+            if ($franquiaId) $comFranquia++;
             $bar->advance();
         }
 
@@ -172,10 +182,41 @@ class MigrateEnvios extends Command
             ['migrados',                     $migrados],
             ['pulados (sem candidato/vaga)', $puladas],
             ['mesclados (par repetido)',     $mesclados],
+            ['com franquia responsável',      $comFranquia],
+            ['sem franquia (vão para o admin)', $migrados - $comFranquia],
         ]);
         $this->newLine();
 
         return 0;
+    }
+
+    /**
+     * ec_users.id do consultor no sistema antigo => franquia_id no novo.
+     *
+     * A fonte é `candidate_jobs.consultant_id` — quem de fato encaminhou o
+     * candidato. NÃO usar `ec_jobs.consultant_ids`, que é lista de acesso à
+     * vaga (mediana de 37 consultores por vaga) e não indica responsabilidade.
+     */
+    private function mapearAutores(): array
+    {
+        $arquivo = storage_path('app/public/migracao/mapa-franquias.json');
+
+        if (!is_file($arquivo)) {
+            $this->error('Mapa de franquias não encontrado. Rode o Passo 1 antes.');
+            return [];
+        }
+
+        $mapa = json_decode(file_get_contents($arquivo), true) ?: [];
+
+        $porUser = [];
+        foreach ($mapa as $entrada) {
+            $antigo = (string) ($entrada['user_id_antigo'] ?? '');
+            if ($antigo !== '') {
+                $porUser[$antigo] = $entrada['franquia_id'];
+            }
+        }
+
+        return $porUser;
     }
 
     private function carregarMapa(string $arquivo, string $passo): ?array

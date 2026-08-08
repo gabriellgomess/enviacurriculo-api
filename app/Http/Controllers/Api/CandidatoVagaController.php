@@ -126,7 +126,7 @@ class CandidatoVagaController extends Controller
             $v->unsetRelation('empresa');
 
             // Nome exibido ao candidato no lugar da empresa contratante.
-            $v->setAttribute('anunciante', 'Agência');
+            $v->setAttribute('anunciante', 'EnviaCurrículo');
 
             // Ocultações que a empresa configurou para o anúncio de agência.
             // (empresa e salário já não aparecem na lista restrita acima.)

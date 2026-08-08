@@ -11,6 +11,7 @@ class Envio extends Model
     protected $fillable = [
         'candidato_id',
         'vaga_id',
+        'franquia_id',
         'curriculo_id',
         'mensagem',
         'status',

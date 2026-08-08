@@ -158,7 +158,7 @@ class FranquiaEmpresaGestaoController extends Controller
             'estado'                => 'nullable|string|size:2',
             'descricao'             => 'nullable|string',
             'prazo_vencimento_dias' => 'nullable|integer|min:1',
-            'reposicao_dias'        => 'nullable|integer|min:1',
+            'reposicao_dias'        => 'nullable|integer|min:0',
             'senha'                 => 'required|string|min:6',
             'beneficios'            => 'nullable|array',
             // Produto contratado. Empresa cadastrada pela franquia é cliente de
@@ -258,7 +258,7 @@ class FranquiaEmpresaGestaoController extends Controller
             'estado'                => 'nullable|string|size:2',
             'descricao'             => 'nullable|string',
             'prazo_vencimento_dias' => 'nullable|integer|min:1',
-            'reposicao_dias'        => 'nullable|integer|min:1',
+            'reposicao_dias'        => 'nullable|integer|min:0',
             'nova_senha'            => 'nullable|string|min:6',
             'beneficios'            => 'nullable|array',
         ]);

@@ -60,20 +60,59 @@ class MigrateVagas extends Command
         return array_map(fn($v) => $v['franquia_id'], $mapa);
     }
 
-    /** Franquia responsável pela vaga, ou a Matriz se não houver atribuição. */
-    private function franquiaDaVaga($old, array $mapaConsultores, int $matrizId): int
+    /**
+     * Dono da vaga = consultor que mais encaminhou candidatos para ela.
+     *
+     * NÃO usar `ec_jobs.consultant_ids`: é lista de ACESSO à vaga, com mediana
+     * de 37 consultores e máximo de 64. Atribuir pelo primeiro da lista jogava
+     * o histórico na franquia errada.
+     *
+     * Devolve [id_vaga_antiga => franquia_id].
+     */
+    private function mapearDonosPorEnvio(array $mapaConsultores): array
     {
-        $ids = json_decode($old->consultant_ids ?? '[]', true);
-        if (!is_array($ids)) return $matrizId;
+        $envios = DB::connection('mysql_antigo')
+            ->table('candidate_jobs')
+            ->select('job_id', 'consultant_id')
+            ->get();
 
-        foreach ($ids as $id) {
-            $chave = (string) $id;
-            if (isset($mapaConsultores[$chave])) {
-                return $mapaConsultores[$chave];
+        // user_id antigo => franquia_id
+        $porUser = $this->mapearAutoresPorUser();
+
+        $contagem = [];
+        foreach ($envios as $e) {
+            $franquia = $porUser[(string) $e->consultant_id] ?? null;
+            if (!$franquia) continue;
+
+            $contagem[$e->job_id][$franquia] = ($contagem[$e->job_id][$franquia] ?? 0) + 1;
+        }
+
+        $donos = [];
+        foreach ($contagem as $jobId => $porFranquia) {
+            arsort($porFranquia);
+            $donos[(string) $jobId] = (int) array_key_first($porFranquia);
+        }
+
+        return $donos;
+    }
+
+    /** ec_users.id do consultor (antigo) => franquia_id no novo. */
+    private function mapearAutoresPorUser(): array
+    {
+        $arquivo = storage_path('app/public/migracao/mapa-franquias.json');
+        if (!is_file($arquivo)) return [];
+
+        $mapa = json_decode(file_get_contents($arquivo), true) ?: [];
+
+        $porUser = [];
+        foreach ($mapa as $entrada) {
+            $antigo = (string) ($entrada['user_id_antigo'] ?? '');
+            if ($antigo !== '') {
+                $porUser[$antigo] = $entrada['franquia_id'];
             }
         }
 
-        return $matrizId;
+        return $porUser;
     }
 
     public function handle(): int
@@ -116,7 +155,9 @@ class MigrateVagas extends Command
         $this->line("  vagas no banco antigo: {$vagas->count()}");
 
         $mapaConsultores = $this->mapearConsultores();
-        $this->line('  franquias mapeadas por consultant_ids: ' . count($mapaConsultores));
+        $donosPorVaga    = $this->mapearDonosPorEnvio($mapaConsultores);
+        $this->line('  franquias mapeadas: ' . count($mapaConsultores));
+        $this->line('  vagas com dono definido pelos envios: ' . count($donosPorVaga));
 
         // ---------- Simulação ----------
         if ($dry) {
@@ -124,7 +165,7 @@ class MigrateVagas extends Command
             $porStatus  = $vagas->groupBy(fn($v) => $this->mapStatus($v))->map->count();
             $comBanner  = $vagas->filter(fn($v) => !empty($v->banner_storage_location))->count();
             $naMatriz   = $vagas->filter(fn($v) =>
-                $this->franquiaDaVaga($v, $mapaConsultores, $matrizId) === $matrizId)->count();
+                ($donosPorVaga[(string) $v->id] ?? $matrizId) === $matrizId)->count();
 
             $this->newLine();
             $this->table(['Situação no sistema novo', 'Total'],
@@ -170,7 +211,7 @@ class MigrateVagas extends Command
                 continue;
             }
 
-            $franquiaVaga = $this->franquiaDaVaga($old, $mapaConsultores, $matrizId);
+            $franquiaVaga = $donosPorVaga[(string) $old->id] ?? $matrizId;
 
             $resultado = DB::transaction(function () use ($old, $empresaId, $franquiaVaga, $matrizId, $path) {
                 $status = $this->mapStatus($old);
@@ -204,7 +245,11 @@ class MigrateVagas extends Command
                         'estado'            => $this->mapEstado($old->state),
                         'quantidade_vagas'  => max(1, (int) $old->positions),
                         'status'            => $status,
-                        'canal'             => $this->mapCanal($old->distribution_channel),
+                        // Todas as empresas entraram como agência (decisão 6),
+                        // então a vaga também é de agência e o feed do candidato
+                        // esconde o nome da empresa.
+                        'canal'             => 'agencia',
+                        'ocultar_empresa'   => true,
                         'nome_requisitante' => $primeiro['nome']  ?? null,
                         'email_requisitante'=> $primeiro['email'] ?? null,
                         'requisitantes'     => $old->requisitantes,
