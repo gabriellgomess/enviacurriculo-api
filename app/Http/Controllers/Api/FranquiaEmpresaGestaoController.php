@@ -89,9 +89,10 @@ class FranquiaEmpresaGestaoController extends Controller
         // rejeita a mistura de coluna e agregado e a rota devolvia 500.
         $query = Empresa::query();
 
-        // "Todas as Empresas" é para todo mundo, premium ou start.
-        // "Minhas Empresas" (minhas=1) é exclusiva da premium, que enxerga
-        // apenas aquelas de que ela é dona.
+        // "Todas as Empresas" é para todo mundo, premium ou start, e lista
+        // ativas e inativas — a maior parte da base migrada entrou inativa e a
+        // franquia precisa enxergá-la. "Minhas Empresas" (minhas=1) é exclusiva
+        // da premium, que vê apenas aquelas de que ela é dona.
         if ($request->boolean('minhas')) {
             if (!$isPremium) {
                 return response()->json([
@@ -99,8 +100,6 @@ class FranquiaEmpresaGestaoController extends Controller
                 ], 403);
             }
             $query->where('franquia_id', $franquiaId);
-        } else {
-            $query->where('active', true);
         }
 
         if ($request->filled('status')) {

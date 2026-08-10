@@ -18,11 +18,15 @@ class StatsController extends Controller
      * automaticamente. A versão anterior contava a tabela `curriculos`, que
      * nunca existiu — o nome correto é `candidatos` —, e por isso o indicador
      * de candidatos aparecia zerado.
+     *
+     * `empresas` é "Empresas Cadastradas": ativas e inativas somadas. Contar só
+     * as ativas escondia da vitrine a maior parte da base migrada, que entrou
+     * inativa. As excluídas seguem fora, pelo soft delete.
      */
     public function index()
     {
         return response()->json([
-            'empresas'   => Empresa::where('active', true)->count(),
+            'empresas'   => Empresa::count(),
             'franquias'  => Franquia::where('active', true)->count(),
             'candidatos' => Candidato::where('active', true)->count(),
         ]);
