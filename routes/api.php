@@ -209,6 +209,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('empresas/beneficios-catalogo', [EmpresaController::class, 'beneficiosCatalogo']);
         Route::apiResource('empresas',             EmpresaController::class);
         Route::patch('empresas/{empresa}/status', [EmpresaController::class, 'changeStatus']);
+        Route::patch('empresas/{empresa}/active', [EmpresaController::class, 'toggleActive']);
         // Follow-ups
         Route::post('empresas/{empresa}/followups', [EmpresaController::class, 'storeFollowup']);
         Route::put('empresas/{empresa}/followups/{followup}', [EmpresaController::class, 'updateFollowup']);

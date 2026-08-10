@@ -26,7 +26,8 @@ use App\Models\UserContext;
  *   9 — CNPJ duplicado: mescla, preferindo o registro visível
  *  10 — empresas sem user_id ganham acesso com senha aleatória
  *  11 — plano = NULL
- *  12/P — deleted = 1 (13) ou active = 0 (133) entram com deleted_at
+ *  12/P — deleted = 1 (13) entra com deleted_at; active = 0 (133) entra
+ *         visível como empresa inativa, para o admin reativar quando quiser
  *
  * O mapa id_antigo → empresa_id é impresso ao final: o Passo 3 (vagas) precisa
  * dele, inclusive para reapontar as vagas dos cadastros mesclados.
@@ -97,6 +98,7 @@ class MigrateEmpresas extends Command
         $mapa        = [];   // id_antigo => empresa_id
         $criadas     = 0;
         $ocultas     = 0;
+        $inativas    = 0;
         $comLogo     = 0;
         $usuarios    = 0;
         $semCnpj     = [];
@@ -109,7 +111,14 @@ class MigrateEmpresas extends Command
                     $semCnpj[] = "{$old->id} — {$old->name} ({$old->cnpj})";
                 }
 
-                $oculta = ((int) $old->deleted === 1) || ((int) $old->active === 0);
+                // `deleted` e `active` são coisas diferentes e não podem ser
+                // tratados igual. Só `deleted = 1` é exclusão; `active = 0` é
+                // empresa inativa, que precisa aparecer no admin para o usuário
+                // reativar quando quiser. Juntar os dois escondia 133 empresas
+                // atrás do soft delete, fora do alcance de qualquer filtro.
+                $excluida = (int) $old->deleted === 1;
+                $inativa  = (int) $old->active === 0;
+                $oculta   = $excluida;
 
                 $empresa = Empresa::withTrashed()->updateOrCreate(
                     ['codigo' => 'EM-' . str_pad((string) $old->id, 5, '0', STR_PAD_LEFT)],
@@ -134,11 +143,11 @@ class MigrateEmpresas extends Command
                         'latitude'       => $old->location_lat,
                         'longitude'      => $old->location_lng,
                         'franquia_id'    => $matrizId,      // decisão 7
-                        'active'         => !$oculta,
+                        'active'         => !$excluida && !$inativa,
                     ]
                 );
 
-                // Decisão 12/P — oculta preservando o registro
+                // Decisão 12/P — exclusão preservando o registro
                 if ($oculta && !$empresa->trashed()) {
                     $empresa->delete();
                 } elseif (!$oculta && $empresa->trashed()) {
@@ -175,7 +184,7 @@ class MigrateEmpresas extends Command
                                 'email'    => $old->email,
                                 'phone'    => $this->mapTelefone($old->phone),
                                 'password' => Hash::make(Str::random(24)),
-                                'active'   => !$oculta,
+                                'active'   => !$excluida && !$inativa,
                             ]);
                             $novoUsuario = true;
                         }
@@ -191,12 +200,13 @@ class MigrateEmpresas extends Command
                 $this->preservarDatas('empresas', $empresa->id,
                     $old->created_at ?: $old->created_date, $old->updated_at);
 
-                return compact('empresa', 'oculta', 'logo', 'novoUsuario', 'colisaoAdmin');
+                return compact('empresa', 'oculta', 'inativa', 'logo', 'novoUsuario', 'colisaoAdmin');
             });
 
             $mapa[$old->id] = $resultado['empresa']->id;
             $criadas++;
             if ($resultado['oculta'])      $ocultas++;
+            if ($resultado['inativa'] && !$resultado['oculta']) $inativas++;
             if ($resultado['logo'])        $comLogo++;
             if ($resultado['novoUsuario']) $usuarios++;
             if ($resultado['colisaoAdmin']) {
@@ -216,8 +226,9 @@ class MigrateEmpresas extends Command
 
         $this->info("Concluído: {$criadas} empresa(s) migrada(s).");
         $this->table(['Indicador', 'Total'], [
-            ['visíveis',            $criadas - $ocultas],
-            ['ocultas (deleted_at)', $ocultas],
+            ['ativas',              $criadas - $ocultas - $inativas],
+            ['inativas (visíveis)', $inativas],
+            ['excluídas (deleted_at)', $ocultas],
             ['com logotipo',        $comLogo],
             ['usuários criados',    $usuarios],
             ['mescladas por CNPJ',  count($descartadas)],
@@ -292,7 +303,8 @@ class MigrateEmpresas extends Command
 
     private function mostrarSimulacao($selecionadas, $descartadas): void
     {
-        $ocultas = $selecionadas->filter(fn($c) => (int) $c->deleted === 1 || (int) $c->active === 0)->count();
+        $ocultas  = $selecionadas->filter(fn($c) => (int) $c->deleted === 1)->count();
+        $inativas = $selecionadas->filter(fn($c) => (int) $c->deleted !== 1 && (int) $c->active === 0)->count();
         $comLogo = $selecionadas->filter(fn($c) => !empty($c->logo_storage_location))->count();
         $semUser = $selecionadas->filter(fn($c) => empty($c->user_id))->count();
         $invalidos = $selecionadas->filter(function ($c) {
@@ -302,8 +314,9 @@ class MigrateEmpresas extends Command
 
         $this->table(['Indicador', 'Total'], [
             ['a migrar',                   $selecionadas->count()],
-            ['  visíveis',                 $selecionadas->count() - $ocultas],
-            ['  ocultas (deleted_at)',     $ocultas],
+            ['  ativas',                   $selecionadas->count() - $ocultas - $inativas],
+            ['  inativas (visíveis)',      $inativas],
+            ['  excluídas (deleted_at)',   $ocultas],
             ['com logotipo no banco',      $comLogo],
             ['sem acesso (user criado)',   $semUser],
             ['descartadas na mescla',      $descartadas->count()],

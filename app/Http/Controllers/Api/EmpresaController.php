@@ -42,6 +42,12 @@ class EmpresaController extends Controller
             $query->where('tipo_acesso', $request->tipo_acesso);
         }
 
+        // Situação: ativa ou inativa. Sem o parâmetro, lista as duas — as
+        // inativas vieram da migração e o usuário precisa achá-las para ativar.
+        if ($request->filled('active')) {
+            $query->where('active', $request->boolean('active'));
+        }
+
         if ($request->filled('franquia_id')) {
             $query->where('franquia_id', $request->franquia_id);
         }
@@ -58,6 +64,10 @@ class EmpresaController extends Controller
             'aprovadas' => Empresa::where('status', 'aprovado')->count(),
             'pendentes' => Empresa::where('status', 'pendente')->count(),
             'rejeitadas'=> Empresa::where('status', 'rejeitado')->count(),
+            // Contadores globais, não da página: com paginação, contar sobre
+            // `data` mostraria no máximo os 20 da página aberta.
+            'ativas'    => Empresa::where('active', true)->count(),
+            'inativas'  => Empresa::where('active', false)->count(),
         ];
 
         return response()->json([
@@ -230,6 +240,29 @@ class EmpresaController extends Controller
     {
         $empresa->delete();
         return response()->json(['message' => 'Empresa removida com sucesso.']);
+    }
+
+    /**
+     * Ativa ou inativa a empresa.
+     *
+     * Separado de changeStatus: lá `active` é consequência da aprovação
+     * (aprovado = ativo). Aqui é a situação operacional — empresa aprovada que
+     * simplesmente não está em atividade, caso das 133 que vieram da migração.
+     */
+    public function toggleActive(Request $request, Empresa $empresa)
+    {
+        $request->validate(['active' => 'required|boolean']);
+
+        $ativa = $request->boolean('active');
+
+        $empresa->update(['active' => $ativa]);
+        // O login acompanha: empresa inativa não acessa o painel.
+        $empresa->user()?->update(['active' => $ativa]);
+
+        return response()->json([
+            'message' => $ativa ? 'Empresa ativada.' : 'Empresa inativada.',
+            'data'    => $empresa->fresh(),
+        ]);
     }
 
     public function changeStatus(Request $request, Empresa $empresa)
