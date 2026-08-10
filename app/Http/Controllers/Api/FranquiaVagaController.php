@@ -108,7 +108,11 @@ class FranquiaVagaController extends Controller
         $sort = in_array($request->get('sort'), ['created_at', 'updated_at', 'titulo']) ? $request->get('sort') : 'updated_at';
         $dir  = $request->get('dir') === 'asc' ? 'asc' : 'desc';
 
-        $vagas = $query->orderBy($sort, $dir)->paginate(20);
+        // O front pede per_page em alguns pontos (selects, exportações). Fixar
+        // 20 aqui deixava as 1.332 vagas migradas presas na primeira página.
+        $perPage = max(1, min($request->integer('per_page', 20), 200));
+
+        $vagas = $query->orderBy($sort, $dir)->paginate($perPage);
 
         $items = $vagas->getCollection()->map(fn($v) => [
             'id'                => $v->id,
