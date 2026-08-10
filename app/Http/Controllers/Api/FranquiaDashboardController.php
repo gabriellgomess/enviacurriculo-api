@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\EscopoEnviosFranquia;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
@@ -15,6 +16,7 @@ use Illuminate\Http\Request;
 class FranquiaDashboardController extends Controller
 {
     use HasTokenContext;
+    use EscopoEnviosFranquia;
 
     // GET /franquia/dashboard
     public function index(Request $request)
@@ -28,8 +30,13 @@ class FranquiaDashboardController extends Controller
         // Vagas das empresas da franquia
         $vagaIds = Vaga::whereIn('empresa_id', $empresaIds)->pluck('id');
 
+        // Candidatos contam pelo escopo de envios, não pelas vagas: a franquia
+        // encaminha para vagas da Matriz, e derivar das empresas próprias zerava
+        // o indicador para quem não é dona de nenhuma.
+        $filtroEnvios = $this->filtroEnviosFranquia($franquiaId);
+
         $candidatosNovos = Candidato::with('user:id,name')
-            ->whereHas('envios', fn($q) => $q->whereIn('vaga_id', $vagaIds))
+            ->whereHas('envios', $filtroEnvios)
             ->orderByDesc('created_at')
             ->limit(5)
             ->get(['id', 'user_id', 'cidade', 'estado', 'created_at'])
@@ -88,7 +95,7 @@ class FranquiaDashboardController extends Controller
                                                 ->count(),
                     'total_recebido'      => 0, // financeiro pendente
                     'total_a_receber'     => 0, // financeiro pendente
-                    'candidatos_ativos'   => Candidato::whereHas('envios', fn($q) => $q->whereIn('vaga_id', $vagaIds))
+                    'candidatos_ativos'   => Candidato::whereHas('envios', $filtroEnvios)
                                                 ->where('active', true)
                                                 ->count(),
                     'vagas_abertas'       => Vaga::whereIn('empresa_id', $empresaIds)

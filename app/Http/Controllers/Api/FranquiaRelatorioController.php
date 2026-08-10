@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\EscopoEnviosFranquia;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 class FranquiaRelatorioController extends Controller
 {
     use HasTokenContext;
+    use EscopoEnviosFranquia;
 
     // GET /franquia/relatorios?periodo=mes|trimestre|semestre|ano&data_inicio=&data_fim=
     public function index(Request $request)
@@ -23,20 +25,23 @@ class FranquiaRelatorioController extends Controller
         [$inicio, $fim] = $this->resolvePeriodo($request);
 
         $empresaIds = Empresa::where('franquia_id', $franquiaId)->pluck('id');
-        $vagaIds    = Vaga::whereIn('empresa_id', $empresaIds)->pluck('id');
 
-        // Candidatos
-        $totalCandidatos = Candidato::whereHas('envios', fn($q) => $q->whereIn('vaga_id', $vagaIds))
+        // Candidatos e envios seguem o escopo de envios da franquia, não as
+        // vagas das empresas dela: as vagas migradas são da Matriz e derivar
+        // delas zerava o relatório inteiro.
+        $filtroEnvios = $this->filtroEnviosFranquia($franquiaId);
+
+        $totalCandidatos = Candidato::whereHas('envios', $filtroEnvios)
             ->where('active', true)
             ->count();
 
-        $novosCandidatos = Candidato::whereHas('envios', fn($q) => $q->whereIn('vaga_id', $vagaIds))
+        $novosCandidatos = Candidato::whereHas('envios', $filtroEnvios)
             ->whereBetween('created_at', [$inicio, $fim])
             ->count();
 
-        $aprovados   = Envio::whereIn('vaga_id', $vagaIds)->where('status', 'aprovado')
+        $aprovados   = $this->enviosDaFranquia($franquiaId)->where('status', 'aprovado')
             ->whereBetween('updated_at', [$inicio, $fim])->count();
-        $emProcesso  = Envio::whereIn('vaga_id', $vagaIds)->where('status', 'em_processo')->count();
+        $emProcesso  = $this->enviosDaFranquia($franquiaId)->where('status', 'em_processo')->count();
 
         // Vagas
         $totalAbertas  = Vaga::whereIn('empresa_id', $empresaIds)->where('status', 'publicada')->count();
@@ -44,7 +49,7 @@ class FranquiaRelatorioController extends Controller
             ->whereBetween('data_fechamento', [$inicio, $fim])->count();
 
         $mediaCandidatos = $totalAbertas > 0
-            ? round(Envio::whereIn('vaga_id', $vagaIds)->count() / max($totalAbertas, 1), 1)
+            ? round($this->enviosDaFranquia($franquiaId)->count() / max($totalAbertas, 1), 1)
             : 0;
 
         // Empresas

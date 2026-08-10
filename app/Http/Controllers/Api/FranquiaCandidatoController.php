@@ -510,9 +510,14 @@ class FranquiaCandidatoController extends Controller
             ])
             ->findOrFail($id);
 
-        $candidaturas = Envio::with('vaga:id,titulo')
-            ->where('candidato_id', $candidato->id)
-            ->whereIn('vaga_id', $vagaIds)
+        // Mesmo escopo do histórico: envios da franquia mais os das vagas dela.
+        // Filtrar só por vaga própria zerava a lista, já que as vagas migradas
+        // pertencem à Matriz.
+        $candidaturas = $this->escopoEnvios(
+                Envio::with('vaga:id,titulo')->where('candidato_id', $candidato->id),
+                $franquiaId,
+                $vagaIds
+            )
             ->orderByDesc('updated_at')
             ->get()
             ->map(fn($e) => [
@@ -911,10 +916,6 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $vagaIds    = $this->vagaIds($franquiaId);
 
-        if (!$vagaIds->contains($vagaId)) {
-            return response()->json(['message' => 'Sem permissão.'], 403);
-        }
-
         $data = $request->validate([
             'status'           => 'required|in:enviado,visualizado,em_processo,em_entrevista,pendente,aprovado,reprovado,desistiu,reposicao',
             'observacao'       => 'nullable|string',
@@ -924,9 +925,21 @@ class FranquiaCandidatoController extends Controller
             'data_saida'       => 'nullable|date',
         ]);
 
-        $envio = Envio::where('candidato_id', $candidatoId)
-            ->where('vaga_id', $vagaId)
-            ->firstOrFail();
+        // Pode alterar o que ela mesma encaminhou (envios.franquia_id) ou o que
+        // chegou nas vagas dela — exatamente o que a tela lista. Exigir a vaga
+        // própria travava todo mundo: as vagas migradas são da Matriz, e nem a
+        // franquia que fez o encaminhamento conseguia mudar o status.
+        $envio = $this->escopoEnvios(
+            Envio::where('candidato_id', $candidatoId)->where('vaga_id', $vagaId),
+            $franquiaId,
+            $vagaIds
+        )->first();
+
+        if (!$envio) {
+            return response()->json([
+                'message' => 'Este vínculo não pertence à sua franquia.',
+            ], 403);
+        }
 
         // status sempre; demais campos apenas quando enviados pelo front
         $envio->fill([

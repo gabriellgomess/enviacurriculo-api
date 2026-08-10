@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\EscopoEnviosFranquia;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
@@ -27,6 +28,7 @@ use Illuminate\Support\Facades\Storage;
 class FranquiaRelatorioGerencialController extends Controller
 {
     use HasTokenContext;
+    use EscopoEnviosFranquia;
 
     private const MOEDA = ['minimumFractionDigits' => 2];
 
@@ -148,8 +150,12 @@ class FranquiaRelatorioGerencialController extends Controller
 
     private function candidatosVinculados(int $franquiaId): array
     {
-        return Envio::with(['candidato.user:id,name', 'vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social'])
-            ->whereIn('vaga_id', $this->vagaIds($franquiaId))
+        // Escopo de envios, não das vagas das empresas próprias: as vagas
+        // migradas são da Matriz e o relatório sairia vazio.
+        return $this->escopoEnviosFranquia(
+                Envio::with(['candidato.user:id,name', 'vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social']),
+                $franquiaId
+            )
             ->orderByDesc('created_at')
             ->get()->map(fn($e) => [
                 'Candidato' => $e->candidato?->user?->name ?? '—',
@@ -162,8 +168,10 @@ class FranquiaRelatorioGerencialController extends Controller
 
     private function curriculosRecebidos(int $franquiaId, ?bool $visualizado): array
     {
-        $q = Envio::with(['candidato.user:id,name', 'vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social'])
-            ->whereIn('vaga_id', $this->vagaIds($franquiaId));
+        $q = $this->escopoEnviosFranquia(
+            Envio::with(['candidato.user:id,name', 'vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social']),
+            $franquiaId
+        );
         if ($visualizado === false) $q->whereNull('visualizado_em');
 
         return $q->orderByDesc('created_at')->get()->map(function ($e) use ($visualizado) {
@@ -180,7 +188,7 @@ class FranquiaRelatorioGerencialController extends Controller
 
     private function curriculosPorOrigem(int $franquiaId): array
     {
-        return Envio::whereIn('vaga_id', $this->vagaIds($franquiaId))
+        return $this->enviosDaFranquia($franquiaId)
             ->selectRaw('COALESCE(origem, "plataforma") as origem, count(*) as total')
             ->groupBy('origem')
             ->orderByDesc('total')
@@ -467,7 +475,7 @@ class FranquiaRelatorioGerencialController extends Controller
             ['Indicador' => 'Total de Vagas',             'Valor' => (string) $vagaIds->count()],
             ['Indicador' => 'Vagas Abertas',               'Valor' => (string) Vaga::whereIn('empresa_id', $empresaIds)->where('status', 'publicada')->count()],
             ['Indicador' => 'Vagas Fechadas',              'Valor' => (string) Vaga::whereIn('empresa_id', $empresaIds)->where('status', 'fechada')->count()],
-            ['Indicador' => 'Currículos Recebidos',        'Valor' => (string) Envio::whereIn('vaga_id', $vagaIds)->count()],
+            ['Indicador' => 'Currículos Recebidos',        'Valor' => (string) $this->enviosDaFranquia($franquiaId)->count()],
             ['Indicador' => 'Faturamentos Realizados',     'Valor' => (string) FranquiaContaReceber::where('franquia_id', $franquiaId)->count()],
             ['Indicador' => 'Faturamento Bruto Total',     'Valor' => $this->fmt(FranquiaContaReceber::where('franquia_id', $franquiaId)->sum('valor_bruto'))],
             ['Indicador' => 'Faturamento Líquido Total',   'Valor' => $this->fmt(FranquiaContaReceber::where('franquia_id', $franquiaId)->sum('valor_liquido'))],
