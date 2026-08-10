@@ -258,6 +258,27 @@ class FranquiaCandidatoController extends Controller
             ->withExists('pareceres as tem_parecer')
             ->where('active', true);
 
+        // Busca livre — nome, e-mail, cargo, cidade e CPF. Antes o campo da
+        // tela filtrava no navegador, sobre os 20 registros carregados: com
+        // 12 mil candidatos, procurar por nome quase nunca achava ninguém.
+        if ($request->filled('search')) {
+            $termo  = trim($request->search);
+            $digitos = preg_replace('/\D/', '', $termo);
+
+            $query->where(function ($q) use ($termo, $digitos) {
+                $q->where('cargo_desejado', 'like', "%{$termo}%")
+                  ->orWhere('cidade', 'like', "%{$termo}%")
+                  ->orWhereHas('user', function ($u) use ($termo) {
+                      $u->where('name', 'like', "%{$termo}%")
+                        ->orWhere('email', 'like', "%{$termo}%");
+                  });
+
+                if ($digitos !== '') {
+                    $q->orWhere('cpf', 'like', "%{$digitos}%");
+                }
+            });
+        }
+
         if ($request->filled('cargo')) {
             $query->where('cargo_desejado', 'like', '%' . $request->cargo . '%');
         }
@@ -344,10 +365,27 @@ class FranquiaCandidatoController extends Controller
             $vagaIds
         );
 
-        $envios = $query->orderByDesc('created_at')->get();
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // Busca no servidor por candidato, vaga ou empresa
+        if ($request->filled('search')) {
+            $termo = trim($request->search);
+            $query->where(function ($q) use ($termo) {
+                $q->whereHas('candidato.user', fn($u) => $u->where('name', 'like', "%{$termo}%"))
+                  ->orWhereHas('vaga', fn($v) => $v->where('titulo', 'like', "%{$termo}%"))
+                  ->orWhereHas('vaga.empresa', fn($e) => $e->where('razao_social', 'like', "%{$termo}%"));
+            });
+        }
 
         if ($request->boolean('list')) {
-            $data = $envios->map(fn($e) => [
+            // Paginado: a Unidade Matriz é dona de todas as vagas migradas, e
+            // sem paginar esta rota carregava os 19 mil envios de uma vez.
+            $perPage = min((int) $request->query('per_page', 20), 100);
+            $envios  = $query->orderByDesc('created_at')->paginate($perPage);
+
+            $data = $envios->getCollection()->map(fn($e) => [
                 'id'               => $e->id,
                 'candidato_id'     => $e->candidato_id,
                 'candidato_nome'   => $e->candidato?->user?->name ?? '—',
@@ -366,10 +404,19 @@ class FranquiaCandidatoController extends Controller
                 'created_at'       => $e->created_at,
             ])->values();
 
-            return response()->json(['data' => $data]);
+            return response()->json([
+                'data' => $data,
+                'meta' => [
+                    'total'        => $envios->total(),
+                    'per_page'     => $envios->perPage(),
+                    'current_page' => $envios->currentPage(),
+                    'last_page'    => $envios->lastPage(),
+                ],
+            ]);
         }
 
-        $grouped = $envios->groupBy('status');
+        // Kanban: agrupado por situação, sem paginação
+        $grouped = $query->orderByDesc('created_at')->get()->groupBy('status');
         $statusKeys = ['enviado', 'visualizado', 'em_processo', 'aprovado', 'reprovado'];
 
         $data = [];
@@ -390,10 +437,25 @@ class FranquiaCandidatoController extends Controller
     {
         $franquiaId = $this->tokenContextId($request);
 
-        $pareceres = CandidatoParecer::with(['candidato.user:id,name', 'vaga:id,titulo'])
-            ->where('franquia_id', $franquiaId)
-            ->orderByDesc('created_at')
-            ->paginate(20);
+        $query = CandidatoParecer::with(['candidato.user:id,name', 'vaga:id,titulo'])
+            ->where('franquia_id', $franquiaId);
+
+        // Busca no servidor: a tela filtrava no navegador, sobre a página
+        // aberta, e não encontrava nada fora dos 20 mais recentes.
+        if ($request->filled('search')) {
+            $termo = trim($request->search);
+            $query->where(function ($q) use ($termo) {
+                $q->whereHas('candidato.user', fn($u) => $u->where('name', 'like', "%{$termo}%"))
+                  ->orWhereHas('vaga', fn($v) => $v->where('titulo', 'like', "%{$termo}%"));
+
+                if (ctype_digit($termo)) {
+                    $q->orWhere('id', (int) $termo);
+                }
+            });
+        }
+
+        $perPage   = min((int) $request->query('per_page', 20), 100);
+        $pareceres = $query->orderByDesc('created_at')->paginate($perPage);
 
         $items = $pareceres->getCollection()->map(fn($p) => [
             'id'               => $p->id,
