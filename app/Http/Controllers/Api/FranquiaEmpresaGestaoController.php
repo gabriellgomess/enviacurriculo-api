@@ -83,8 +83,11 @@ class FranquiaEmpresaGestaoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $isPremium  = Franquia::find($franquiaId)?->tipo === 'premium';
 
-        $query = Empresa::with('franquia:id,nome,tipo,telefone,email,email_franqueado')
-            ->withCount('vagas as total_vagas');
+        // Só os filtros. O eager loading e o withCount entram depois, na query
+        // da listagem: a query dos totais é agregada e não pode carregar a
+        // subconsulta de contagem de vagas no SELECT — sem GROUP BY, o MySQL
+        // rejeita a mistura de coluna e agregado e a rota devolvia 500.
+        $query = Empresa::query();
 
         // "Todas as Empresas" é para todo mundo, premium ou start.
         // "Minhas Empresas" (minhas=1) é exclusiva da premium, que enxerga
@@ -124,7 +127,11 @@ class FranquiaEmpresaGestaoController extends Controller
             ->first();
 
         $perPage = max(1, min($request->integer('per_page', 20), 500));
-        $empresas = $query->orderByDesc('created_at')->paginate($perPage);
+        $empresas = $query
+            ->with('franquia:id,nome,tipo,telefone,email,email_franqueado')
+            ->withCount('vagas as total_vagas')
+            ->orderByDesc('created_at')
+            ->paginate($perPage);
 
         return response()->json([
             'data' => $empresas->getCollection()->map(fn($e) => [
