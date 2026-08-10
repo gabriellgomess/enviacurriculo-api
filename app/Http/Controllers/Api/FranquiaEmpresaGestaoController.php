@@ -86,20 +86,44 @@ class FranquiaEmpresaGestaoController extends Controller
         $query = Empresa::with('franquia:id,nome,tipo,telefone,email,email_franqueado')
             ->withCount('vagas as total_vagas');
 
-        if ($request->boolean('all')) {
-            $query->where('active', true);
-        } elseif ($request->boolean('minhas') || !$isPremium) {
-            // Franquias start sempre veem só as próprias empresas; premium só quando
-            // pede explicitamente a aba "Minhas Empresas" (as demais empresas do
-            // sistema aparecem em "Todas as Empresas", sem esse filtro).
+        // "Todas as Empresas" é para todo mundo, premium ou start.
+        // "Minhas Empresas" (minhas=1) é exclusiva da premium, que enxerga
+        // apenas aquelas de que ela é dona.
+        if ($request->boolean('minhas')) {
+            if (!$isPremium) {
+                return response()->json([
+                    'message' => 'Apenas franquias premium têm empresas próprias.',
+                ], 403);
+            }
             $query->where('franquia_id', $franquiaId);
+        } else {
+            $query->where('active', true);
         }
 
         if ($request->filled('status')) {
             $query->where('active', $request->status === 'ativa');
         }
 
-        $perPage = $request->integer('per_page', 20);
+        // Busca no servidor: com paginação real, filtrar no navegador só
+        // encontraria o que estivesse na página aberta.
+        if ($request->filled('search')) {
+            $termo = $request->search;
+            $query->where(function ($q) use ($termo) {
+                $q->where('razao_social',  'like', "%{$termo}%")
+                  ->orWhere('nome_fantasia', 'like', "%{$termo}%")
+                  ->orWhere('cnpj',          'like', "%{$termo}%")
+                  ->orWhere('cidade',        'like', "%{$termo}%")
+                  ->orWhere('codigo',        'like', "%{$termo}%");
+            });
+        }
+
+        // Contadores do topo: sobre o conjunto todo, não só a página
+        $totais = (clone $query)
+            ->selectRaw('COUNT(*) AS total, SUM(active = 1) AS ativas, SUM(active = 0) AS inativas')
+            ->reorder()
+            ->first();
+
+        $perPage = max(1, min($request->integer('per_page', 20), 500));
         $empresas = $query->orderByDesc('created_at')->paginate($perPage);
 
         return response()->json([
@@ -132,6 +156,8 @@ class FranquiaEmpresaGestaoController extends Controller
                 'per_page'     => $empresas->perPage(),
                 'current_page' => $empresas->currentPage(),
                 'last_page'    => $empresas->lastPage(),
+                'ativas'       => (int) ($totais->ativas   ?? 0),
+                'inativas'     => (int) ($totais->inativas ?? 0),
             ],
         ]);
     }

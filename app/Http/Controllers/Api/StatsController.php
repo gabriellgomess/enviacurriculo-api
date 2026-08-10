@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Candidato;
+use App\Models\Empresa;
+use App\Models\Franquia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -10,18 +13,19 @@ class StatsController extends Controller
 {
     /**
      * Contadores públicos exibidos na Home.
-     * Ajuste os nomes das tabelas conforme forem criadas.
+     *
+     * Usa os models: assim os registros excluídos (soft delete) ficam de fora
+     * automaticamente. A versão anterior contava a tabela `curriculos`, que
+     * nunca existiu — o nome correto é `candidatos` —, e por isso o indicador
+     * de candidatos aparecia zerado.
      */
     public function index()
     {
-        $tables = DB::select("SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()");
-        $tableNames = array_map(fn($t) => $t->table_name ?? $t->TABLE_NAME, $tables);
-
-        $empresas   = in_array('empresas',  $tableNames) ? DB::table('empresas')->count()  : 0;
-        $franquias  = in_array('franquias', $tableNames) ? DB::table('franquias')->count() : 0;
-        $candidatos = in_array('curriculos',$tableNames) ? DB::table('curriculos')->count(): 0;
-
-        return response()->json(compact('empresas', 'franquias', 'candidatos'));
+        return response()->json([
+            'empresas'   => Empresa::where('active', true)->count(),
+            'franquias'  => Franquia::where('active', true)->count(),
+            'candidatos' => Candidato::where('active', true)->count(),
+        ]);
     }
 
     /**

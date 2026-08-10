@@ -493,8 +493,16 @@ class FranquiaVagaController extends Controller
         // Permite vincular candidatos do banco que ainda nao tem curriculo anexado.
         $envio = Envio::firstOrCreate(
             ['candidato_id' => $candidato->id, 'vaga_id' => $vaga->id],
-            // origem='franquia': a empresa recebeu este candidato pelo canal agência
-            ['curriculo_id' => $curriculo?->id, 'status' => 'enviado', 'origem' => 'franquia']
+            [
+                'curriculo_id' => $curriculo?->id,
+                'status'       => 'enviado',
+                // origem='franquia': a empresa recebeu este candidato pelo canal agência
+                'origem'       => 'franquia',
+                // Quem encaminhou. Sem isto o envio some do Status Candidatos de
+                // quem o fez: a tela parte de envios.franquia_id, e a vaga pode
+                // ser da Matriz ou de outra franquia que convidou esta.
+                'franquia_id'  => $franquiaId,
+            ]
         );
 
         return response()->json([

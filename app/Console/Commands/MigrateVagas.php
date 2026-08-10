@@ -34,87 +34,23 @@ class MigrateVagas extends Command
 
     protected $description = 'Migra as vagas do sistema antigo';
 
-    /** ec_consultants.id dos que viraram franquia (decisão O). */
-    private const CONSULTORES = [10, 13, 15, 16, 32, 54, 112, 125, 146, 147, 171, 186];
-
     /**
-     * ec_consultants.id → franquia_id no sistema novo.
+     * TODA vaga migrada fica na Unidade Matriz (decisão 7).
      *
-     * `ec_jobs.consultant_ids` guarda quem atendeu a vaga. Sem essa atribuição
-     * o franqueado entra e não vê nem as vagas nem o histórico de vinculações,
-     * porque a visibilidade em FranquiaCandidatoController parte das vagas
-     * da franquia.
+     * `vagas.franquia_id` significa "a franquia é dona desta vaga", e no modelo
+     * novo só franquia premium é dona de vaga, através da empresa que ela
+     * possui. Nenhum dos 12 consultores migrados é premium, e todas as empresas
+     * entraram com `franquia_id` = Matriz — as vagas acompanham.
+     *
+     * Houve uma tentativa de deduzir o dono pelo consultor que mais encaminhou
+     * candidatos para a vaga. Estava errada por dois motivos: no sistema antigo
+     * a vaga era um pool compartilhado (mediana de 37 consultores por vaga), e
+     * "quem mais encaminhou" não é "quem é dono". O efeito era a franquia ver,
+     * na tela de Status Candidatos, encaminhamentos de todas as outras.
+     *
+     * A responsabilidade pelo encaminhamento mora em `envios.franquia_id`,
+     * gravado no Passo 6 a partir de `candidate_jobs.consultant_id`.
      */
-    private function mapearConsultores(): array
-    {
-        $arquivo = storage_path('app/public/migracao/mapa-franquias.json');
-
-        if (!is_file($arquivo)) {
-            $this->error('Mapa de franquias não encontrado. Rode o Passo 1 antes.');
-            return [];
-        }
-
-        $mapa = json_decode(file_get_contents($arquivo), true) ?: [];
-
-        // ec_consultants.id => franquia_id
-        return array_map(fn($v) => $v['franquia_id'], $mapa);
-    }
-
-    /**
-     * Dono da vaga = consultor que mais encaminhou candidatos para ela.
-     *
-     * NÃO usar `ec_jobs.consultant_ids`: é lista de ACESSO à vaga, com mediana
-     * de 37 consultores e máximo de 64. Atribuir pelo primeiro da lista jogava
-     * o histórico na franquia errada.
-     *
-     * Devolve [id_vaga_antiga => franquia_id].
-     */
-    private function mapearDonosPorEnvio(array $mapaConsultores): array
-    {
-        $envios = DB::connection('mysql_antigo')
-            ->table('candidate_jobs')
-            ->select('job_id', 'consultant_id')
-            ->get();
-
-        // user_id antigo => franquia_id
-        $porUser = $this->mapearAutoresPorUser();
-
-        $contagem = [];
-        foreach ($envios as $e) {
-            $franquia = $porUser[(string) $e->consultant_id] ?? null;
-            if (!$franquia) continue;
-
-            $contagem[$e->job_id][$franquia] = ($contagem[$e->job_id][$franquia] ?? 0) + 1;
-        }
-
-        $donos = [];
-        foreach ($contagem as $jobId => $porFranquia) {
-            arsort($porFranquia);
-            $donos[(string) $jobId] = (int) array_key_first($porFranquia);
-        }
-
-        return $donos;
-    }
-
-    /** ec_users.id do consultor (antigo) => franquia_id no novo. */
-    private function mapearAutoresPorUser(): array
-    {
-        $arquivo = storage_path('app/public/migracao/mapa-franquias.json');
-        if (!is_file($arquivo)) return [];
-
-        $mapa = json_decode(file_get_contents($arquivo), true) ?: [];
-
-        $porUser = [];
-        foreach ($mapa as $entrada) {
-            $antigo = (string) ($entrada['user_id_antigo'] ?? '');
-            if ($antigo !== '') {
-                $porUser[$antigo] = $entrada['franquia_id'];
-            }
-        }
-
-        return $porUser;
-    }
-
     public function handle(): int
     {
         $matrizId = (int) $this->option('matriz');
@@ -154,18 +90,14 @@ class MigrateVagas extends Command
         $vagas = DB::connection('mysql_antigo')->table('ec_jobs')->orderBy('id')->get();
         $this->line("  vagas no banco antigo: {$vagas->count()}");
 
-        $mapaConsultores = $this->mapearConsultores();
-        $donosPorVaga    = $this->mapearDonosPorEnvio($mapaConsultores);
-        $this->line('  franquias mapeadas: ' . count($mapaConsultores));
-        $this->line('  vagas com dono definido pelos envios: ' . count($donosPorVaga));
+        $this->line('  dono das vagas: Unidade Matriz (todas)');
 
         // ---------- Simulação ----------
         if ($dry) {
             $semEmpresa = $vagas->filter(fn($v) => empty($mapaEmpresas[$v->company_id]))->count();
             $porStatus  = $vagas->groupBy(fn($v) => $this->mapStatus($v))->map->count();
             $comBanner  = $vagas->filter(fn($v) => !empty($v->banner_storage_location))->count();
-            $naMatriz   = $vagas->filter(fn($v) =>
-                ($donosPorVaga[(string) $v->id] ?? $matrizId) === $matrizId)->count();
+            $naMatriz   = $vagas->count();
 
             $this->newLine();
             $this->table(['Situação no sistema novo', 'Total'],
@@ -211,7 +143,7 @@ class MigrateVagas extends Command
                 continue;
             }
 
-            $franquiaVaga = $donosPorVaga[(string) $old->id] ?? $matrizId;
+            $franquiaVaga = $matrizId;
 
             $resultado = DB::transaction(function () use ($old, $empresaId, $franquiaVaga, $matrizId, $path) {
                 $status = $this->mapStatus($old);

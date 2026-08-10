@@ -577,12 +577,24 @@ class FranquiaCandidatoController extends Controller
     public function vincular(Request $request, int $candidatoId)
     {
         $franquiaId = $this->tokenContextId($request);
-        $vagaIds    = $this->vagaIds($franquiaId);
 
         $request->validate(['vaga_id' => 'required|integer']);
 
-        if (!$vagaIds->contains($request->vaga_id)) {
-            return response()->json(['message' => 'Vaga não pertence a esta franquia.'], 403);
+        // Vaga própria OU vaga em que esta franquia foi convidada — mesma regra
+        // de FranquiaVagaController::vincular. Exigir só a vaga própria travava
+        // a operação: as vagas migradas pertencem todas à Unidade Matriz, e é o
+        // admin que distribui cada uma às franquias pelo convite.
+        $podeVincular = \App\Models\Vaga::whereKey($request->vaga_id)
+            ->where(function ($q) use ($franquiaId) {
+                $q->where('franquia_id', $franquiaId)
+                  ->orWhereHas('franquiasCompartilhadas', fn($s) => $s->where('franquias.id', $franquiaId));
+            })
+            ->exists();
+
+        if (!$podeVincular) {
+            return response()->json([
+                'message' => 'Esta vaga não está disponível para a sua franquia.',
+            ], 403);
         }
 
         $candidato = Candidato::findOrFail($candidatoId);
@@ -599,8 +611,15 @@ class FranquiaCandidatoController extends Controller
         // Permite vincular candidatos do banco que ainda nao tem curriculo anexado.
         $envio = Envio::firstOrCreate(
             ['candidato_id' => $candidato->id, 'vaga_id' => $request->vaga_id],
-            // origem='franquia': a empresa recebeu este candidato pelo canal agência
-            ['curriculo_id' => $curriculo?->id, 'status' => 'enviado', 'origem' => 'franquia']
+            [
+                'curriculo_id' => $curriculo?->id,
+                'status'       => 'enviado',
+                // origem='franquia': a empresa recebeu este candidato pelo canal agência
+                'origem'       => 'franquia',
+                // Quem encaminhou — é por aqui que o envio volta para a tela de
+                // Status Candidatos de quem o registrou.
+                'franquia_id'  => $franquiaId,
+            ]
         );
 
         return response()->json([
