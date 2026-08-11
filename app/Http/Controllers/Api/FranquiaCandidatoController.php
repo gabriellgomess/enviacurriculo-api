@@ -518,20 +518,18 @@ class FranquiaCandidatoController extends Controller
             ])
             ->findOrFail($id);
 
-        // Mesmo escopo do histórico: envios da franquia mais os das vagas dela.
-        // Filtrar só por vaga própria zerava a lista, já que as vagas migradas
-        // pertencem à Matriz.
-        $candidaturas = $this->escopoEnvios(
-                Envio::with('vaga:id,titulo')->where('candidato_id', $candidato->id),
-                $franquiaId,
-                $vagaIds
-            )
+        // Mesma regra do histórico: todas as candidaturas, de todas as
+        // franquias, com quem encaminhou identificado.
+        $candidaturas = Envio::with(['vaga:id,titulo', 'franquia:id,nome'])
+            ->where('candidato_id', $candidato->id)
             ->orderByDesc('updated_at')
             ->get()
             ->map(fn($e) => [
-                'vaga_id' => $e->vaga_id,
-                'titulo'  => $e->vaga?->titulo,
-                'status'  => $e->status,
+                'vaga_id'    => $e->vaga_id,
+                'titulo'     => $e->vaga?->titulo,
+                'status'     => $e->status,
+                'franquia'   => $e->franquia?->nome ?? 'Administração',
+                'is_own'     => $e->franquia_id === $franquiaId,
                 'updated_at' => $e->updated_at,
             ]);
 
@@ -703,25 +701,38 @@ class FranquiaCandidatoController extends Controller
         ], 201);
     }
 
-    // GET /franquia/candidatos/{id}/historico
+    /**
+     * GET /franquia/candidatos/{id}/historico
+     *
+     * Histórico COMPLETO do candidato, de todas as franquias, identificando
+     * quem encaminhou e quando (decisão do cliente em 11/08/2026).
+     *
+     * Antes era restrito ao escopo da própria franquia, e isso causava
+     * retrabalho: uma franquia encaminhava o candidato para uma vaga do mesmo
+     * cargo e da mesma empresa de onde ele já havia desistido meses antes, sem
+     * ter como saber. O receio original — cópia de parecer entre franquias —
+     * está resolvido em `pareceresCandidato`, que restringe o texto do parecer
+     * a quem o escreveu. Aqui só trafega vaga, empresa, situação e data.
+     */
     public function historico(Request $request, int $id)
     {
         $franquiaId = $this->tokenContextId($request);
-        $vagaIds    = $this->vagaIds($franquiaId);
 
-        $envios = $this->escopoEnvios(
-                Envio::with(['vaga:id,titulo,empresa_id', 'vaga.empresa:id,razao_social,nome_fantasia'])
-                    ->where('candidato_id', $id),
-                $franquiaId,
-                $vagaIds
-            )
+        $envios = Envio::with([
+                'vaga:id,titulo,empresa_id',
+                'vaga.empresa:id,razao_social,nome_fantasia',
+                'franquia:id,nome',
+            ])
+            ->where('candidato_id', $id)
             ->orderByDesc('created_at')
             ->get()
             ->map(fn($e) => [
                 'id'           => $e->id,
                 'vaga_nome'    => $e->vaga?->titulo,
                 'empresa_nome' => $e->vaga?->empresa?->razao_social ?? $e->vaga?->empresa?->nome_fantasia,
-                'franquia'     => null,
+                // Sem franquia responsável = encaminhamento da operação central
+                'franquia'     => $e->franquia?->nome ?? 'Administração',
+                'is_own'       => $e->franquia_id === $franquiaId,
                 'status'       => $e->status,
                 'vinculado_em' => $e->created_at,
             ]);
