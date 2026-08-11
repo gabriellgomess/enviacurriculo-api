@@ -21,7 +21,13 @@ class VagaController extends Controller
             $query->where(function ($q) use ($s) {
                 $q->where('titulo', 'like', "%{$s}%")
                   ->orWhere('codigo', 'like', "%{$s}%")
-                  ->orWhere('cidade', 'like', "%{$s}%");
+                  ->orWhere('cidade', 'like', "%{$s}%")
+                  // Procurar pelo nome da empresa é o caminho natural de quem
+                  // sabe para onde quer mandar o candidato, mas não decorou o
+                  // título da vaga.
+                  ->orWhereHas('empresa', fn($e) => $e
+                      ->where('razao_social', 'like', "%{$s}%")
+                      ->orWhere('nome_fantasia', 'like', "%{$s}%"));
             });
         }
 
@@ -73,7 +79,11 @@ class VagaController extends Controller
         $sort = in_array($request->get('sort'), ['created_at', 'updated_at', 'titulo']) ? $request->get('sort') : 'updated_at';
         $dir  = $request->get('dir') === 'asc' ? 'asc' : 'desc';
 
-        $vagas = $query->orderBy($sort, $dir)->paginate(20);
+        // Honra per_page: o diálogo de vincular candidato pede a lista inteira
+        // de vagas publicadas. Com 20 fixos, só as 20 mais recentes apareciam.
+        $perPage = max(1, min((int) $request->input('per_page', 20), 500));
+
+        $vagas = $query->orderBy($sort, $dir)->paginate($perPage);
 
         $meta = [
             'total'     => Vaga::count(),

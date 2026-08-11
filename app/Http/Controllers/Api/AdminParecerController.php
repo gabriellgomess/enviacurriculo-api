@@ -45,6 +45,56 @@ class AdminParecerController extends Controller
             });
         }
 
+        if ($request->filled('franquia_id')) {
+            $query->where('franquia_id', $request->franquia_id);
+        }
+
+        // A empresa pode estar no próprio parecer ou vir pela vaga — a tela
+        // mostra as duas origens, então o filtro precisa cobrir as duas.
+        if ($request->filled('empresa_id')) {
+            $empresaId = $request->empresa_id;
+            $query->where(function ($q) use ($empresaId) {
+                $q->where('empresa_id', $empresaId)
+                  ->orWhereHas('vaga', fn($v) => $v->where('empresa_id', $empresaId));
+            });
+        }
+
+        if ($request->filled('status')) {
+            $status = $request->status;
+            // Parecer antigo tem status_aprovacao nulo e é exibido como pendente.
+            $query->when($status === 'pendente',
+                fn($q) => $q->where(fn($s) => $s->where('status_aprovacao', 'pendente')
+                                                ->orWhereNull('status_aprovacao')),
+                fn($q) => $q->where('status_aprovacao', $status),
+            );
+        }
+
+        // Período do parecer
+        if ($request->filled('data_de')) {
+            $query->whereDate('candidato_pareceres.created_at', '>=', $request->data_de);
+        }
+        if ($request->filled('data_ate')) {
+            $query->whereDate('candidato_pareceres.created_at', '<=', $request->data_ate);
+        }
+
+        // Períodos de vinculação e admissão vivem no envio, não no parecer.
+        // O par candidato+vaga é o que liga um ao outro.
+        $filtrosEnvio = ['vinculo_de', 'vinculo_ate', 'admissao_de', 'admissao_ate'];
+
+        if (collect($filtrosEnvio)->contains(fn($c) => $request->filled($c))) {
+            $query->whereExists(function ($q) use ($request) {
+                $q->selectRaw('1')
+                  ->from('envios')
+                  ->whereColumn('envios.candidato_id', 'candidato_pareceres.candidato_id')
+                  ->whereColumn('envios.vaga_id', 'candidato_pareceres.vaga_id');
+
+                if ($request->filled('vinculo_de'))   $q->whereDate('envios.created_at', '>=', $request->vinculo_de);
+                if ($request->filled('vinculo_ate'))  $q->whereDate('envios.created_at', '<=', $request->vinculo_ate);
+                if ($request->filled('admissao_de'))  $q->whereDate('envios.data_admissao', '>=', $request->admissao_de);
+                if ($request->filled('admissao_ate')) $q->whereDate('envios.data_admissao', '<=', $request->admissao_ate);
+            });
+        }
+
         $perPage = min((int) $request->get('per_page', 50), 200);
         $pareceres = $query->paginate($perPage);
 
