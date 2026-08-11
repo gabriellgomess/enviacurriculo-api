@@ -107,6 +107,13 @@ Route::post('empresas/cadastrar', [\App\Http\Controllers\Api\RegisterEmpresaCont
 // Consulta de CNPJ — pública, com cache de 24h no backend
 Route::get('cnpj/{cnpj}', [CnpjController::class, 'show'])->middleware('throttle:30,1');
 
+// Extração de dados do currículo por IA (ver PLANO_EXTRACAO_CURRICULO_IA.md).
+// Rota pública usada pelo cadastro do candidato: cada chamada custa dinheiro,
+// então o limite por IP é parte da funcionalidade, não um detalhe.
+// Fica ao lado de auth/register, que é o cadastro público do candidato.
+Route::post('auth/register/curriculo/extrair', \App\Http\Controllers\Api\CurriculoExtracaoController::class)
+    ->middleware('throttle:5,1');
+
 // Lead público "Seja Franqueado" (home)
 Route::get('franquias-publicas', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'publicas']);
 Route::post('franquia-leads', [\App\Http\Controllers\Api\FranquiaLeadController::class, 'store'])
@@ -263,6 +270,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('chamados/{id}/reabrir',          [AdminChamadoController::class, 'reabrir']);
 
         // Currículos (Candidatos)
+        Route::post('curriculos/extrair', \App\Http\Controllers\Api\CurriculoExtracaoController::class);
         Route::apiResource('candidatos', CandidatoController::class);
         Route::patch('candidatos/{candidato}/toggle-active', [CandidatoController::class, 'toggleActive']);
         Route::get('candidatos/{candidato}/documentos/{documento}/download', [CandidatoController::class, 'downloadDocumento']);
@@ -463,6 +471,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Banco de currículos
         Route::get('banco-curriculos',                  [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'index']);
+        Route::post('banco-curriculos/extrair',         \App\Http\Controllers\Api\CurriculoExtracaoController::class);
         Route::post('banco-curriculos',                 [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'store']);
         Route::post('banco-curriculos/copia-base',      [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'copiaBase']);
         Route::get('banco-curriculos/duplicata',        [\App\Http\Controllers\Api\EmpresaBancoCurriculoController::class, 'duplicata']);
@@ -603,6 +612,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('pareceres',                          [FranquiaCandidatoController::class, 'pareceresEmpresas']);
         Route::patch('pareceres/{id}/validar',           [FranquiaCandidatoController::class, 'validarParecer']);
         Route::get('candidatos',                         [FranquiaCandidatoController::class, 'index']);
+        Route::post('curriculos/extrair',                \App\Http\Controllers\Api\CurriculoExtracaoController::class);
         Route::post('candidatos',                        [FranquiaCandidatoController::class, 'store']);
         Route::get('candidatos/{id}',                    [FranquiaCandidatoController::class, 'show']);
         Route::put('candidatos/{id}',                    [FranquiaCandidatoController::class, 'update']);

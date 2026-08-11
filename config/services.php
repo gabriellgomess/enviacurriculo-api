@@ -49,6 +49,24 @@ return [
         'secret_key' => env('TURNSTILE_SECRET_KEY'),
     ],
 
+    // Extração de dados do currículo por IA (ver PLANO_EXTRACAO_CURRICULO_IA.md).
+    //
+    // Sem OPENAI_API_KEY, ou com `ativa` em false, o endpoint responde
+    // "extração indisponível" e o formulário segue no preenchimento manual —
+    // nunca bloqueia um cadastro.
+    'openai' => [
+        'api_key'  => env('OPENAI_API_KEY'),
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+        'model'    => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        'timeout'  => (int) env('OPENAI_TIMEOUT', 20),
+        'ativa'    => filter_var(env('EXTRACAO_CURRICULO_ATIVA', true), FILTER_VALIDATE_BOOL),
+        // Currículo real dificilmente passa de 8 mil caracteres; o corte protege
+        // o custo contra arquivos anômalos.
+        'max_caracteres' => (int) env('EXTRACAO_MAX_CARACTERES', 15000),
+        // Abaixo disto o PDF é imagem/escaneado: responde sem chamar a IA.
+        'min_caracteres' => (int) env('EXTRACAO_MIN_CARACTERES', 200),
+    ],
+
     // Webhook de leads externos (formulário WordPress/Elementor do cliente).
     // Token compartilhado enviado na URL do webhook (?token=) ou no header
     // X-Webhook-Token. Sem LEADS_EXTERNOS_WEBHOOK_TOKEN, a checagem é ignorada.
