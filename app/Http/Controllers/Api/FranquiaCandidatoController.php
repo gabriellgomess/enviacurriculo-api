@@ -16,6 +16,7 @@ use App\Services\GeocodeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class FranquiaCandidatoController extends Controller
@@ -97,6 +98,21 @@ class FranquiaCandidatoController extends Controller
             $q->where('franquia_id', $franquiaId)
               ->orWhereIn('vaga_id', $vagaIds);
         });
+    }
+
+    /**
+     * URL pública do arquivo, ou null quando o arquivo não existe no storage.
+     *
+     * A checagem importa: 318 documentos vieram da migração sem o arquivo
+     * correspondente. Sem ela, o botão ficaria habilitado e levaria a um 404.
+     */
+    private function urlArquivo(?string $caminho): ?string
+    {
+        if (empty($caminho) || !Storage::disk('public')->exists($caminho)) {
+            return null;
+        }
+
+        return Storage::disk('public')->url($caminho);
     }
 
     /**
@@ -603,11 +619,19 @@ class FranquiaCandidatoController extends Controller
             'informacoes_adicionais'   => $candidato->informacoes_adicionais,
             'disponibilidade'          => $candidato->disponibilidade,
             'franquia_responsavel'     => $candidato->franquia?->nome,
-            'curriculo_ativo'          => $curriculo ? ['id' => $curriculo->id, 'arquivo_nome' => $curriculo->arquivo_nome] : null,
+            // arquivo_url é o que habilita os botões de ver e baixar na tela.
+            // Sem ele, o botão de download ficava permanentemente desabilitado,
+            // mesmo para candidato com currículo anexado.
+            'curriculo_ativo'          => $curriculo ? [
+                'id'           => $curriculo->id,
+                'arquivo_nome' => $curriculo->arquivo_nome,
+                'arquivo_url'  => $this->urlArquivo($curriculo->arquivo_path),
+            ] : null,
             'documentos'               => $candidato->documentos->map(fn($d) => [
                 'id'           => $d->id,
                 'tipo'         => $d->tipo,
                 'arquivo_nome' => $d->arquivo_nome,
+                'arquivo_url'  => $this->urlArquivo($d->arquivo_path),
             ])->values(),
             'candidaturas'             => $candidaturas,
         ]]);
