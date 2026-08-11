@@ -87,6 +87,17 @@ class Envio extends Model
         return $this->belongsTo(Vaga::class);
     }
 
+    /**
+     * Franquia que registrou o encaminhamento.
+     *
+     * Não é a dona da vaga: a vaga pode ser da Matriz e o envio ser de uma
+     * franquia convidada. Nulo quando o envio veio da operação central.
+     */
+    public function franquia()
+    {
+        return $this->belongsTo(Franquia::class);
+    }
+
     public function curriculo()
     {
         return $this->belongsTo(CandidatoDocumento::class, 'curriculo_id');
