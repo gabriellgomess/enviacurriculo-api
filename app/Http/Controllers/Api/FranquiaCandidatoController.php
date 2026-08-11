@@ -279,6 +279,14 @@ class FranquiaCandidatoController extends Controller
             });
         }
 
+        // Só quem já tem parecer — pré-requisito para vincular a uma vaga.
+        // O seletor de "Vincular Candidato" usa este filtro: antes ele baixava
+        // os 100 mais recentes e descartava no navegador quem não tinha parecer,
+        // então a franquia só alcançava os cadastros novos.
+        if ($request->boolean('com_parecer')) {
+            $query->whereHas('pareceres');
+        }
+
         if ($request->filled('cargo')) {
             $query->where('cargo_desejado', 'like', '%' . $request->cargo . '%');
         }
