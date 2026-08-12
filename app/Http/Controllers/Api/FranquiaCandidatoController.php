@@ -116,21 +116,11 @@ class FranquiaCandidatoController extends Controller
     }
 
     /**
-     * Candidatos visiveis para a franquia: os que tem envio DELA, os que tem
-     * envio em vagas dela, ou os cadastrados/possuidos por ela.
-     *
-     * O envio carrega a propria franquia responsavel (`envios.franquia_id`).
-     * Derivar apenas da vaga estava errado para o acervo migrado: no sistema
-     * antigo a vaga era um pool compartilhado entre dezenas de consultores.
+     * Candidatos visiveis para a franquia: acervo 100% compartilhado entre todas as franquias (Opção A).
      */
     private function candidatosVisiveisQuery(int $franquiaId, \Illuminate\Support\Collection $vagaIds)
     {
-        return Candidato::where(function ($q) use ($franquiaId, $vagaIds) {
-            $q->whereHas('envios', fn($s) => $s->where('franquia_id', $franquiaId))
-              ->orWhereHas('envios', fn($s) => $s->whereIn('vaga_id', $vagaIds))
-              ->orWhere('franquia_id', $franquiaId)
-              ->orWhereNull('franquia_id'); // candidatos do banco global (admin) visíveis a todas as franquias
-        });
+        return Candidato::query();
     }
 
     // POST /franquia/candidatos  (cadastra novo curriculo no banco da franquia)
@@ -760,6 +750,12 @@ class FranquiaCandidatoController extends Controller
             ]
         );
 
+        if (!$envio->wasRecentlyCreated) {
+            return response()->json([
+                'message' => 'Este candidato já está participando do processo seletivo desta vaga.',
+            ], 422);
+        }
+
         return response()->json([
             'message' => 'Candidato vinculado com sucesso.',
             'data'    => ['candidato_id' => $candidato->id, 'vaga_id' => $request->vaga_id, 'status' => $envio->status],
@@ -1035,6 +1031,9 @@ class FranquiaCandidatoController extends Controller
             if (array_key_exists($campo, $data)) {
                 $envio->{$campo} = $data[$campo];
             }
+        }
+        if ($data['status'] === 'aprovado' && empty($envio->data_admissao)) {
+            $envio->data_admissao = now()->toDateString();
         }
         $envio->save();
 

@@ -165,6 +165,7 @@ class FranquiaFinanceiroController extends Controller
         $envios = \App\Models\Envio::with([
                 'candidato.user:id,name',
                 'vaga:id,titulo,empresa_id,nivel_vaga_id,franquia_id',
+                'vaga.nivelVaga:id,nome',
                 'vaga.empresa:id,razao_social,prazo_vencimento_dias,reposicao_dias',
             ])
             ->whereHas('vaga', fn($q) => $q->where('franquia_id', $franquiaId))
@@ -186,12 +187,15 @@ class FranquiaFinanceiroController extends Controller
                 'id'                 => $e->id,
                 'empresa_nome'       => $e->vaga?->empresa?->razao_social,
                 'candidato_nome'     => $e->candidato?->user?->name,
+                'vaga_nome'          => $e->vaga?->titulo,
                 'vaga_titulo'        => $e->vaga?->titulo,
+                'nivel_vaga_nome'    => $e->vaga?->nivelVaga?->nome,
                 'salario_aprovado'   => $e->salario_aprovado !== null ? (string) $e->salario_aprovado : '',
                 'taxa_servico'       => (float) $taxa,
                 'prazo_vencimento'   => $e->vaga?->empresa?->prazo_vencimento_dias ?? 30,
                 'prazo_reposicao'    => $e->vaga?->empresa?->reposicao_dias ?? 30,
                 'data_aprovacao'     => $e->updated_at,
+                'data_admissao'      => $e->data_admissao?->toDateString() ?? $e->updated_at?->toDateString(),
                 'status_faturamento' => isset($faturadosIds[$e->id]) ? 'faturado' : 'pendente',
             ];
         })]);

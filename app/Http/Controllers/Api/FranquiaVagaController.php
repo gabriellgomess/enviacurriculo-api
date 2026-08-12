@@ -202,6 +202,7 @@ class FranquiaVagaController extends Controller
             'franquia_ids'       => 'nullable|array',
             'franquia_ids.*'     => 'integer|exists:franquias,id',
             'observacoes'        => 'nullable|string',
+            'status'             => 'nullable|in:publicada,rascunho,pausada,cancelada,fechada,aberta,em_andamento',
             'requisitantes'          => 'nullable|array',
             'requisitantes.*.nome'   => 'required_with:requisitantes|string|max:255',
             'requisitantes.*.email'  => 'nullable|email|max:255',
@@ -252,7 +253,11 @@ class FranquiaVagaController extends Controller
             'nome_requisitante'  => $validated['nome_requisitante'] ?? null,
             'email_requisitante' => $validated['email_requisitante'] ?? null,
             'requisitantes'      => $validated['requisitantes'] ?? null,
-            'status'          => 'publicada',
+            'status'          => match ($validated['status'] ?? 'publicada') {
+                'aberta'       => 'publicada',
+                'em_andamento' => 'pausada',
+                default        => $validated['status'] ?? 'publicada',
+            },
             'data_abertura'   => now(),
         ]);
 
@@ -383,7 +388,7 @@ class FranquiaVagaController extends Controller
 
         $validated = $request->validate([
             'titulo'            => 'sometimes|required|string|max:255',
-            'status'            => 'nullable|in:publicada,rascunho,pausada,cancelada,fechada',
+            'status'            => 'nullable|in:publicada,rascunho,pausada,cancelada,fechada,aberta,em_andamento',
             'descricao'         => 'nullable|string',
             'requisitos'        => 'nullable|string',
             'beneficios'        => 'nullable|string',
@@ -428,6 +433,11 @@ class FranquiaVagaController extends Controller
         $data = [];
         foreach ($validated as $key => $val) {
             match ($key) {
+                'status'            => $data['status']           = match ($val) {
+                    'aberta'       => 'publicada',
+                    'em_andamento' => 'pausada',
+                    default        => $val,
+                },
                 'modalidade'        => $data['regime_trabalho']  = $val,
                 'salario_oculto'    => $data['exibir_salario']   = !$val,
                 'vagas_disponiveis' => $data['quantidade_vagas'] = $val,
@@ -508,6 +518,12 @@ class FranquiaVagaController extends Controller
                 'franquia_id'  => $franquiaId,
             ]
         );
+
+        if (!$envio->wasRecentlyCreated) {
+            return response()->json([
+                'message' => 'Este candidato já está participando do processo seletivo desta vaga.',
+            ], 422);
+        }
 
         return response()->json([
             'message' => 'Candidato vinculado com sucesso.',

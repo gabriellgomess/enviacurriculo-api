@@ -187,7 +187,7 @@ class VagaController extends Controller
             'estado'          => 'nullable|string|size:2',
             'bairro'          => 'nullable|string|max:100',
             'quantidade_vagas'=> 'nullable|integer|min:1',
-            'status'          => 'nullable|in:rascunho,publicada,pausada,fechada',
+            'status'          => 'nullable|in:rascunho,publicada,pausada,fechada,cancelada,aberta,em_andamento',
             'requer_validacao_premium' => 'nullable|boolean',
             'data_abertura'   => 'nullable|date',
             'data_fechamento' => 'nullable|date|after_or_equal:data_abertura',
@@ -206,6 +206,14 @@ class VagaController extends Controller
         if (!empty($validated['requisitantes'])) {
             $validated['nome_requisitante']  = $validated['requisitantes'][0]['nome'] ?? null;
             $validated['email_requisitante'] = $validated['requisitantes'][0]['email'] ?? null;
+        }
+
+        if (isset($validated['status'])) {
+            $validated['status'] = match ($validated['status']) {
+                'aberta'       => 'publicada',
+                'em_andamento' => 'pausada',
+                default        => $validated['status'],
+            };
         }
 
         $vaga->update($validated);

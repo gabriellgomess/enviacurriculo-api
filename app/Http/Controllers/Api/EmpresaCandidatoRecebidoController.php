@@ -116,6 +116,10 @@ class EmpresaCandidatoRecebidoController extends Controller
             }
         }
 
+        if ($data['status'] === 'aprovado' && empty($envio->data_admissao)) {
+            $envio->data_admissao = now()->toDateString();
+        }
+
         $envio->save();
 
         return response()->json(['message' => 'Status atualizado.']);
