@@ -127,6 +127,17 @@ class AdminParecerController extends Controller
                     'responsavel' => $franquia->responsavel,
                 ] : null,
                 'empresa_nome'     => $empresaNome,
+                'candidato'        => $p->candidato ? [
+                    'id'              => $p->candidato_id,
+                    'nome'            => $p->candidato->user?->name ?? $p->candidato->nome,
+                    'cpf'             => $p->candidato->cpf,
+                    'telefone'        => $p->candidato->telefone,
+                    'email'           => $p->candidato->email ?? $p->candidato->user?->email,
+                    'data_nascimento' => $p->candidato->data_nascimento?->toDateString(),
+                    'escolaridade'    => $p->candidato->escolaridade,
+                    'cidade'          => $p->candidato->cidade,
+                    'estado'          => $p->candidato->estado,
+                ] : null,
                 'candidato_nome'   => $p->candidato?->user?->name ?? $p->candidato?->nome ?? '—',
                 'candidato_endereco' => $p->candidato ? implode(', ', array_filter([
                     $p->candidato->logradouro,

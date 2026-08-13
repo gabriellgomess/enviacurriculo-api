@@ -513,11 +513,25 @@ class FranquiaCandidatoController extends Controller
 
         $items = $pareceres->getCollection()->map(fn($p) => [
             'id'               => $p->id,
-            'candidato'        => ['id' => $p->candidato_id, 'nome' => $p->candidato?->user?->name],
+            'candidato'        => $p->candidato ? [
+                'id'              => $p->candidato_id,
+                'nome'            => $p->candidato->user?->name ?? $p->candidato->nome,
+                'cpf'             => $p->candidato->cpf,
+                'telefone'        => $p->candidato->telefone,
+                'email'           => $p->candidato->email ?? $p->candidato->user?->email,
+                'data_nascimento' => $p->candidato->data_nascimento?->toDateString(),
+                'escolaridade'    => $p->candidato->escolaridade,
+                'cidade'          => $p->candidato->cidade,
+                'estado'          => $p->candidato->estado,
+                'bairro'          => $p->candidato->bairro,
+                'logradouro'      => $p->candidato->logradouro,
+            ] : null,
             'vaga'             => $p->vaga ? ['id' => $p->vaga_id, 'titulo' => $p->vaga->titulo] : null,
-            'empresa_nome'     => $p->vaga?->empresa?->razao_social ?? $p->vaga?->empresa?->nome_fantasia,
+            'empresa_nome'     => $p->empresa?->razao_social ?? $p->empresa?->nome_fantasia ?? $p->vaga?->empresa?->razao_social ?? $p->vaga?->empresa?->nome_fantasia,
+            'franquia_nome'    => $p->franquia?->nome,
             'texto'            => $p->texto,
             'nota'             => $p->nota,
+            'dados'            => $p->dados,
             'status_aprovacao' => $p->status_aprovacao,
             'created_at'       => $p->created_at,
         ]);
