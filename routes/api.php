@@ -303,6 +303,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('contas-receber', [AdminFinanceiroController::class, 'contasReceber']);
             Route::get('contas-pagar',   [AdminFinanceiroController::class, 'contasPagar']);
             Route::post('contas-pagar',  [AdminFinanceiroController::class, 'storeContaPagar']);
+            Route::put('contas-pagar/{id}', [AdminFinanceiroController::class, 'updateContaPagar']);
+            Route::delete('contas-pagar/{id}', [AdminFinanceiroController::class, 'destroyContaPagar']);
             Route::patch('contas-pagar/{id}/pagar', [AdminFinanceiroController::class, 'pagarConta']);
 
             // Faturamento — cobranças da franqueadora às franquias
@@ -379,6 +381,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('configuracoes/tipo-niveis-vagas/{id}', [AdminNivelVagaController::class, 'destroy']);
         Route::get('configuracoes/backup',                   [App\Http\Controllers\Api\AdminBackupController::class, 'index']);
         Route::post('configuracoes/backup',                  [App\Http\Controllers\Api\AdminBackupController::class, 'store']);
+        Route::get('configuracoes/backup/{id}/download',     [App\Http\Controllers\Api\AdminBackupController::class, 'download']);
+        Route::delete('configuracoes/backup/{id}',           [App\Http\Controllers\Api\AdminBackupController::class, 'destroy']);
         Route::post('configuracoes/backup/{id}/restore',     [App\Http\Controllers\Api\AdminBackupController::class, 'restore']);
 
         // Leads "Seja Franqueado"
@@ -670,6 +674,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('contas-receber/sstart',          [FranquiaFinanceiroController::class, 'contasReceberSStart']);
             Route::get('contas-pagar',                   [FranquiaFinanceiroController::class, 'contasPagar']);
             Route::post('contas-pagar',                  [FranquiaFinanceiroController::class, 'storeContaPagar']);
+            Route::put('contas-pagar/{id}',              [FranquiaFinanceiroController::class, 'updateContaPagar']);
+            Route::delete('contas-pagar/{id}',           [FranquiaFinanceiroController::class, 'destroyContaPagar']);
             Route::patch('contas-pagar/{id}/pagar',      [FranquiaFinanceiroController::class, 'pagarConta']);
             Route::get('taxas',                          [FranquiaFinanceiroController::class, 'taxas']);
             Route::get('faturaveis',                     [FranquiaFinanceiroController::class, 'faturaveis']);

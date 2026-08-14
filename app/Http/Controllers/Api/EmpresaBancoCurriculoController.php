@@ -62,12 +62,20 @@ class EmpresaBancoCurriculoController extends Controller
                 $query->where(fn($q) => $q->where('nome', 'like', "%{$s}%")
                     ->orWhere('cargo_desejado', 'like', "%{$s}%")
                     ->orWhere('email', 'like', "%{$s}%"));
+            $perPage = min((int) $request->query('per_page', 20), 500);
+
+        $curriculos = EmpresaCurriculo::where('empresa_id', $empresaId)
+            ->when($request->filled('q'), function ($query) use ($request) {
+                $s = $request->q;
+                $query->where(fn($q) => $q->where('nome', 'like', "%{$s}%")
+                    ->orWhere('cargo_desejado', 'like', "%{$s}%")
+                    ->orWhere('email', 'like', "%{$s}%"));
             })
             ->when($request->filled('cidade'), fn($q) => $q->where('cidade', 'like', "%{$request->cidade}%"))
             ->when($request->filled('estado'), fn($q) => $q->where('estado', $request->estado))
             ->when($request->filled('origem'), fn($q) => $q->where('origem', $request->origem))
             ->orderByDesc('created_at')
-            ->paginate(20);
+            ->paginate($perPage);
 
         return response()->json([
             'data' => collect($curriculos->items())->map(fn($c) => $this->payload($c)),
@@ -561,7 +569,7 @@ class EmpresaBancoCurriculoController extends Controller
                     (empresa_id, candidato_id, nome, email, telefone, cpf, cargo_desejado,
                      cidade, estado, origem, arquivo_path, arquivo_nome, created_at, updated_at)
                 SELECT ?, c.id, u.name, u.email, c.telefone, c.cpf, c.cargo_desejado,
-                       c.cidade, c.estado, 'plataforma', cd.arquivo_path, cd.arquivo_nome, NOW(), NOW()
+                       c.cidade, c.estado, COALESCE(NULLIF(e.origem, ''), IF(e.franquia_id IS NOT NULL, 'franquia', 'plataforma')), cd.arquivo_path, cd.arquivo_nome, NOW(), NOW()
                 FROM (
                     SELECT MAX(e.id) AS envio_id, e.candidato_id
                     FROM envios e
@@ -573,6 +581,14 @@ class EmpresaBancoCurriculoController extends Controller
                 JOIN users u               ON u.id = c.user_id
                 LEFT JOIN candidato_documentos cd ON cd.id = e.curriculo_id
             ", [$empresaId, $empresaId]);
+
+            DB::statement("
+                UPDATE empresa_curriculos ec
+                JOIN envios e ON e.candidato_id = ec.candidato_id
+                JOIN vagas v ON v.id = e.vaga_id AND v.empresa_id = ec.empresa_id
+                SET ec.origem = 'franquia'
+                WHERE ec.empresa_id = ? AND (e.origem = 'franquia' OR e.franquia_id IS NOT NULL)
+            ", [$empresaId]);
         } catch (\Throwable) {
             // ingestão é best-effort; a listagem segue com o que existir
         }

@@ -191,6 +191,33 @@ class AdminFinanceiroController extends Controller
         ]);
     }
 
+    public function updateContaPagar(Request $request, int $id)
+    {
+        $conta = FranquiaContaPagar::findOrFail($id);
+
+        $validated = $request->validate([
+            'descricao'       => 'sometimes|required|string|max:255',
+            'valor'           => 'sometimes|required|numeric|min:0',
+            'data_vencimento' => 'sometimes|required|date',
+            'categoria'       => 'nullable|string|max:50',
+            'fornecedor_nome' => 'nullable|string|max:255',
+            'observacao'      => 'nullable|string',
+            'status'          => 'nullable|in:pendente,pago,cancelado',
+        ]);
+
+        $conta->update($validated);
+
+        return response()->json(['message' => 'Conta atualizada com sucesso.', 'data' => $conta]);
+    }
+
+    public function destroyContaPagar(Request $request, int $id)
+    {
+        $conta = FranquiaContaPagar::findOrFail($id);
+        $conta->delete();
+
+        return response()->json(['message' => 'Conta a pagar removida com sucesso.']);
+    }
+
     /* ─── Faturamento (cobranças da franqueadora às franquias) ───────── */
 
     public function indexFranquiaFaturamentos(Request $request)

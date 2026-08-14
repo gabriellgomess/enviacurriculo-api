@@ -79,6 +79,27 @@ class FranquiaDashboardController extends Controller
                 'created_at' => $v->created_at,
             ]);
 
+        $totalRecebido = (float) \App\Models\FranquiaContaReceber::where('franquia_id', $franquiaId)
+            ->where('status', 'pago')
+            ->sum('valor_liquido');
+
+        $totalAReceber = (float) \App\Models\FranquiaContaReceber::where('franquia_id', $franquiaId)
+            ->where('status', 'pendente')
+            ->sum('valor_liquido');
+
+        $metas = MetaFranquia::with('tipoMeta:id,nome,unidade')
+            ->where('franquia_id', $franquiaId)
+            ->where('status', 'ativa')
+            ->get();
+
+        $metas->transform(function ($meta) use ($totalRecebido) {
+            $isMoeda = !$meta->tipoMeta || $meta->tipoMeta->unidade === 'moeda';
+            if ($isMoeda) {
+                $meta->valor_atual = $totalRecebido;
+            }
+            return $meta;
+        });
+
         return response()->json([
             'data' => [
                 'franquia' => [
@@ -88,13 +109,12 @@ class FranquiaDashboardController extends Controller
                     'tipo'   => $franquia->tipo,
                 ],
                 'kpis' => [
-                    'metas_ativas'        => MetaFranquia::where('franquia_id', $franquiaId)
-                                                ->where('status', 'ativa')->count(),
+                    'metas_ativas'        => $metas->count(),
                     'chamados_abertos'    => FranquiaChamado::where('franquia_id', $franquiaId)
                                                 ->whereIn('status', ['aberto', 'em_atendimento'])
                                                 ->count(),
-                    'total_recebido'      => 0, // financeiro pendente
-                    'total_a_receber'     => 0, // financeiro pendente
+                    'total_recebido'      => $totalRecebido,
+                    'total_a_receber'     => $totalAReceber,
                     'candidatos_ativos'   => Candidato::whereHas('envios', $filtroEnvios)
                                                 ->where('active', true)
                                                 ->count(),
@@ -103,6 +123,7 @@ class FranquiaDashboardController extends Controller
                                                 ->count(),
                     'empresas_vinculadas' => $empresaIds->count(),
                 ],
+                'metas'                => $metas,
                 'candidatos_novos'     => $candidatosNovos,
                 'empresas_novas'       => $empresasNovas,
                 'vagas_novas'          => $vagasNovas,

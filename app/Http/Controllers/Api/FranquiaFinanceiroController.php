@@ -136,6 +136,37 @@ class FranquiaFinanceiroController extends Controller
         return response()->json(['message' => 'Pagamento registrado.', 'status' => 'pago']);
     }
 
+    // PUT /franquia/financeiro/contas-pagar/{id}
+    public function updateContaPagar(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $conta = FranquiaContaPagar::where('franquia_id', $franquiaId)->findOrFail($id);
+
+        $validated = $request->validate([
+            'descricao'       => 'sometimes|required|string|max:255',
+            'valor'           => 'sometimes|required|numeric|min:0',
+            'data_vencimento' => 'sometimes|required|date',
+            'categoria'       => 'nullable|string|max:50',
+            'fornecedor_nome' => 'nullable|string|max:255',
+            'observacao'      => 'nullable|string',
+            'status'          => 'nullable|in:pendente,pago,cancelado',
+        ]);
+
+        $conta->update($validated);
+
+        return response()->json(['message' => 'Conta atualizada com sucesso.', 'data' => $conta]);
+    }
+
+    // DELETE /franquia/financeiro/contas-pagar/{id}
+    public function destroyContaPagar(Request $request, int $id)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $conta = FranquiaContaPagar::where('franquia_id', $franquiaId)->findOrFail($id);
+        $conta->delete();
+
+        return response()->json(['message' => 'Conta a pagar removida com sucesso.']);
+    }
+
     // GET /franquia/financeiro/taxas — percentuais vigentes para o tipo da franquia
     public function taxas(Request $request)
     {
@@ -176,12 +207,19 @@ class FranquiaFinanceiroController extends Controller
         $faturadosIds = FranquiaContaReceber::where('franquia_id', $franquiaId)
             ->whereNotNull('envio_id')->pluck('envio_id')->flip();
 
+        $faturadosCandVaga = FranquiaContaReceber::where('franquia_id', $franquiaId)
+            ->whereHas('envio')
+            ->with('envio:id,candidato_id,vaga_id')
+            ->get()
+            ->mapWithKeys(fn($r) => ["{$r->envio?->candidato_id}-{$r->envio?->vaga_id}" => true]);
+
         $taxas = \App\Models\EmpresaTaxaServico::all()
             ->keyBy(fn($t) => "{$t->empresa_id}-{$t->nivel_vaga_id}");
 
-        return response()->json(['data' => $envios->map(function ($e) use ($faturadosIds, $taxas) {
+        return response()->json(['data' => $envios->map(function ($e) use ($faturadosIds, $faturadosCandVaga, $taxas) {
             $key  = "{$e->vaga?->empresa_id}-{$e->vaga?->nivel_vaga_id}";
             $taxa = isset($taxas[$key]) ? $taxas[$key]->percentual : 100;
+            $isFaturado = isset($faturadosIds[$e->id]) || isset($faturadosCandVaga["{$e->candidato_id}-{$e->vaga_id}"]);
 
             return [
                 'id'                 => $e->id,
@@ -196,7 +234,7 @@ class FranquiaFinanceiroController extends Controller
                 'prazo_reposicao'    => $e->vaga?->empresa?->reposicao_dias ?? 30,
                 'data_aprovacao'     => $e->updated_at,
                 'data_admissao'      => $e->data_admissao?->toDateString() ?? $e->updated_at?->toDateString(),
-                'status_faturamento' => isset($faturadosIds[$e->id]) ? 'faturado' : 'pendente',
+                'status_faturamento' => $isFaturado ? 'faturado' : 'pendente',
             ];
         })]);
     }
@@ -228,8 +266,12 @@ class FranquiaFinanceiroController extends Controller
                 ->whereHas('vaga', fn($q) => $q->where('franquia_id', $franquiaId))
                 ->findOrFail($item['envio_id']);
 
-            if (FranquiaContaReceber::where('envio_id', $envio->id)->exists()) {
-                continue; // já faturado
+            $jaFaturado = FranquiaContaReceber::where('envio_id', $envio->id)
+                ->orWhereHas('envio', fn($q) => $q->where('candidato_id', $envio->candidato_id)->where('vaga_id', $envio->vaga_id))
+                ->exists();
+
+            if ($jaFaturado) {
+                continue; // já faturado para este candidato nesta vaga
             }
 
             $salario  = (float) $item['salario'];

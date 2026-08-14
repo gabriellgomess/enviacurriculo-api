@@ -1,49 +1,53 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Console\Commands;
 
-use App\Http\Controllers\Controller;
 use App\Models\SystemBackup;
-use Illuminate\Http\Request;
+use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
 
-class AdminBackupController extends Controller
+class BackupDatabase extends Command
 {
-    // GET /api/admin/configuracoes/backup
-    public function index()
-    {
-        $this->purgeOldBackups(5);
-        $backups = SystemBackup::orderByDesc('created_at')->get();
-        return response()->json(['data' => $backups]);
-    }
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
+    protected $signature = 'app:backup-db {--days=5 : Dias de retenção dos backups na VPS}';
 
-    // POST /api/admin/configuracoes/backup
-    public function store(Request $request)
-    {
-        $this->purgeOldBackups(5);
-        $filename = 'backup_' . date('Y_m_d_His') . '.sql';
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = 'Gera backup automático do banco de dados na VPS e aplica purge de backups com mais de 5 dias.';
 
-        // 1. Generate real SQL dump file on disk
+    /**
+     * Execute the console command.
+     */
+    public function handle()
+    {
+        $days = (int) $this->option('days') ?: 5;
+        $this->info("Iniciando rotina de backup (Retenção: {$days} dias na VPS)...");
+
+        $filename = 'backup_auto_' . date('Y_m_d_His') . '.sql';
         $sizeBytes = $this->generateSqlDump($filename);
 
-        // 2. Calculate tables count in local database dynamically
         $tables = DB::select('SHOW TABLES');
         $tablesCount = count($tables);
 
-        // 3. Estimate database records count
         $recordsCount = 0;
         try {
             $dbName = DB::connection()->getDatabaseName();
             $records = DB::select("SELECT SUM(TABLE_ROWS) as total_rows FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ?", [$dbName]);
             $recordsCount = (int) ($records[0]->total_rows ?? 0);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $recordsCount = 1000;
         }
 
-        // 4. Create database log
         $backup = SystemBackup::create([
-            'backup_type'   => 'manual',
+            'backup_type'   => 'automatic',
             'status'        => 'completed',
             'tables_count'  => $tablesCount,
             'records_count' => $recordsCount,
@@ -51,82 +55,41 @@ class AdminBackupController extends Controller
             'filename'      => $filename,
         ]);
 
-        return response()->json(['message' => 'Backup do banco de dados gerado com sucesso.', 'data' => $backup], 201);
+        $this->info("Backup gerado com sucesso: {$filename} ({$sizeBytes} bytes)");
+
+        // Expurgo automático de backups com mais de $days dias
+        $this->purgeOldBackups($days);
+
+        return Command::SUCCESS;
     }
 
     /**
-     * Purge de backups e arquivos físicos com mais de $daysToKeep dias.
+     * Purge de backups e arquivos físicos mais antigos que $daysToKeep dias.
      */
-    private function purgeOldBackups(int $daysToKeep = 5): void
+    public function purgeOldBackups(int $daysToKeep = 5): int
     {
         $cutoff = Carbon::now()->subDays($daysToKeep);
         $oldBackups = SystemBackup::where('created_at', '<', $cutoff)->get();
 
+        $count = 0;
         foreach ($oldBackups as $backup) {
             $filePath = storage_path('app/backups/' . $backup->filename);
             if (file_exists($filePath)) {
                 @unlink($filePath);
             }
             $backup->delete();
-        }
-    }
-
-    // GET /api/admin/configuracoes/backup/{id}/download
-    public function download(int $id)
-    {
-        $backup = SystemBackup::findOrFail($id);
-        $backupDir = storage_path('app/backups');
-        $filePath = $backupDir . '/' . $backup->filename;
-
-        if (!file_exists($filePath)) {
-            $size = $this->generateSqlDump($backup->filename);
-            if ($size > 0) {
-                $backup->update(['size_bytes' => $size]);
-            }
+            $count++;
         }
 
-        if (!file_exists($filePath)) {
-            return response()->json(['message' => 'Arquivo de backup não encontrado no servidor.'], 404);
+        if ($count > 0) {
+            $this->info("Expurgo concluído: {$count} backup(s) antigo(s) com mais de {$daysToKeep} dias removido(s).");
         }
 
-        return response()->download($filePath, $backup->filename, [
-            'Content-Type' => 'text/plain',
-        ]);
-    }
-
-    // DELETE /api/admin/configuracoes/backup/{id}
-    public function destroy(int $id)
-    {
-        $backup = SystemBackup::findOrFail($id);
-        $filePath = storage_path('app/backups/' . $backup->filename);
-
-        if (file_exists($filePath)) {
-            @unlink($filePath);
-        }
-
-        $backup->delete();
-
-        return response()->json(['message' => 'Backup removido com sucesso.']);
-    }
-
-    // POST /api/admin/configuracoes/backup/{id}/restore
-    public function restore(int $id)
-    {
-        $backup = SystemBackup::findOrFail($id);
-
-        if ($backup->status !== 'completed') {
-            return response()->json(['message' => 'Este backup não foi concluído com sucesso e não pode ser restaurado.'], 422);
-        }
-
-        $backup->update([
-            'restored_at' => Carbon::now(),
-        ]);
-
-        return response()->json(['message' => 'Backup restaurado com sucesso.', 'data' => $backup]);
+        return $count;
     }
 
     /**
-     * Helper para gerar dump SQL do banco de dados em disk
+     * Gera dump SQL do banco de dados na VPS
      */
     private function generateSqlDump(string $filename): int
     {
@@ -143,7 +106,6 @@ class AdminBackupController extends Controller
         $dbUser = config('database.connections.mysql.username', 'root');
         $dbPass = config('database.connections.mysql.password', '');
 
-        // Tenta mysqldump via linha de comando
         $mysqldumpPath = 'mysqldump';
         $cmd = sprintf(
             '%s --host=%s --port=%s --user=%s %s %s > %s 2>&1',
@@ -158,7 +120,6 @@ class AdminBackupController extends Controller
 
         @exec($cmd, $output, $returnCode);
 
-        // Fallback: exportação PHP PDO caso mysqldump não esteja no PATH
         if ($returnCode !== 0 || !file_exists($filePath) || filesize($filePath) === 0) {
             $handle = @fopen($filePath, 'w');
             if ($handle) {
@@ -192,7 +153,7 @@ class AdminBackupController extends Controller
                         fwrite($handle, "\n");
                     }
                 } catch (\Throwable $e) {
-                    // ignore error during fallback loop
+                    // ignore error
                 }
 
                 fwrite($handle, "SET FOREIGN_KEY_CHECKS=1;\n");

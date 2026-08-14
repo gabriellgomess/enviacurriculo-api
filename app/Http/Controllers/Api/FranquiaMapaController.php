@@ -14,6 +14,8 @@ class FranquiaMapaController extends Controller
 {
     use HasTokenContext;
 
+    public function __construct(private readonly \App\Services\GeocodeService $geocoder) {}
+
     // GET /franquia/mapa?tipo={vagas|candidatos|empresas|franquias|todos}
     public function index(Request $request)
     {
@@ -32,21 +34,34 @@ class FranquiaMapaController extends Controller
 
         if (in_array($tipo, ['vagas', 'todos'])) {
             // A vaga não tem coordenadas próprias; usa a localização da empresa.
-            $data['vagas'] = Vaga::with('empresa:id,razao_social,nome_fantasia,latitude,longitude')
+            $data['vagas'] = Vaga::with('empresa:id,razao_social,nome_fantasia,latitude,longitude,cidade,estado')
                 ->whereIn('empresa_id', $empresaIds)
                 ->where('status', 'publicada')
-                ->whereHas('empresa', fn($q) => $q->whereNotNull('latitude')->whereNotNull('longitude'))
                 ->get(['id', 'empresa_id', 'titulo', 'cidade', 'estado', 'regime_trabalho'])
-                ->map(fn($v) => [
-                    'id'         => $v->id,
-                    'titulo'     => $v->titulo,
-                    'empresa'    => $v->empresa?->nome_fantasia ?? $v->empresa?->razao_social,
-                    'cidade'     => $v->cidade,
-                    'estado'     => $v->estado,
-                    'latitude'   => $v->empresa?->latitude,
-                    'longitude'  => $v->empresa?->longitude,
-                    'modalidade' => $v->regime_trabalho,
-                ]);
+                ->map(function ($v) {
+                    $lat = $v->empresa?->latitude;
+                    $lng = $v->empresa?->longitude;
+                    if ((!$lat || !$lng) && $v->empresa) {
+                        $coords = $this->geocoder->geocode(null, null, null, $v->empresa->cidade, $v->empresa->estado);
+                        if ($coords) {
+                            $v->empresa->update(['latitude' => $coords['latitude'], 'longitude' => $coords['longitude']]);
+                            $lat = $coords['latitude'];
+                            $lng = $coords['longitude'];
+                        }
+                    }
+                    if (!$lat || !$lng) return null;
+
+                    return [
+                        'id'         => $v->id,
+                        'titulo'     => $v->titulo,
+                        'empresa'    => $v->empresa?->nome_fantasia ?? $v->empresa?->razao_social,
+                        'cidade'     => $v->cidade,
+                        'estado'     => $v->estado,
+                        'latitude'   => (float) $lat,
+                        'longitude'  => (float) $lng,
+                        'modalidade' => $v->regime_trabalho,
+                    ];
+                })->filter()->values();
         }
 
         if (in_array($tipo, ['candidatos', 'todos'])) {
@@ -57,53 +72,89 @@ class FranquiaMapaController extends Controller
                       ->orWhere('franquia_id', $franquiaId)
                       ->orWhereNull('franquia_id');
                 })
-                ->whereNotNull('latitude')
-                ->whereNotNull('longitude')
                 ->where('active', true)
-                ->get(['id', 'user_id', 'cargo_desejado', 'cidade', 'estado', 'latitude', 'longitude'])
-                ->map(fn($c) => [
-                    'id'             => $c->id,
-                    'nome'           => $c->user?->name,
-                    'cargo_desejado' => $c->cargo_desejado,
-                    'cidade'         => $c->cidade,
-                    'estado'         => $c->estado,
-                    'latitude'       => $c->latitude,
-                    'longitude'      => $c->longitude,
-                ]);
+                ->get(['id', 'user_id', 'cargo_desejado', 'cidade', 'estado', 'bairro', 'latitude', 'longitude'])
+                ->map(function ($c) {
+                    $lat = $c->latitude;
+                    $lng = $c->longitude;
+                    if ((!$lat || !$lng) && ($c->cidade || $c->estado)) {
+                        $coords = $this->geocoder->geocode(null, null, $c->bairro, $c->cidade, $c->estado);
+                        if ($coords) {
+                            $c->update(['latitude' => $coords['latitude'], 'longitude' => $coords['longitude']]);
+                            $lat = $coords['latitude'];
+                            $lng = $coords['longitude'];
+                        }
+                    }
+                    if (!$lat || !$lng) return null;
+
+                    return [
+                        'id'             => $c->id,
+                        'nome'           => $c->user?->name,
+                        'cargo_desejado' => $c->cargo_desejado,
+                        'cidade'         => $c->cidade,
+                        'estado'         => $c->estado,
+                        'latitude'       => (float) $lat,
+                        'longitude'      => (float) $lng,
+                    ];
+                })->filter()->values();
         }
 
         if (in_array($tipo, ['empresas', 'todos'])) {
             $data['empresas'] = Empresa::where('franquia_id', $franquiaId)
-                ->whereNotNull('latitude')
-                ->whereNotNull('longitude')
                 ->where('active', true)
-                ->get(['id', 'razao_social', 'nome_fantasia', 'cidade', 'estado', 'latitude', 'longitude', 'logo_url'])
-                ->map(fn($e) => [
-                    'id'           => $e->id,
-                    'razao_social' => $e->razao_social,
-                    'nome_fantasia'=> $e->nome_fantasia,
-                    'cidade'       => $e->cidade,
-                    'estado'       => $e->estado,
-                    'latitude'     => $e->latitude,
-                    'longitude'    => $e->longitude,
-                    'logo_url'     => $e->logo_url,
-                ]);
+                ->get(['id', 'razao_social', 'nome_fantasia', 'cidade', 'estado', 'bairro', 'latitude', 'longitude', 'logo_url'])
+                ->map(function ($e) {
+                    $lat = $e->latitude;
+                    $lng = $e->longitude;
+                    if ((!$lat || !$lng) && ($e->cidade || $e->estado)) {
+                        $coords = $this->geocoder->geocode(null, null, $e->bairro, $e->cidade, $e->estado);
+                        if ($coords) {
+                            $e->update(['latitude' => $coords['latitude'], 'longitude' => $coords['longitude']]);
+                            $lat = $coords['latitude'];
+                            $lng = $coords['longitude'];
+                        }
+                    }
+                    if (!$lat || !$lng) return null;
+
+                    return [
+                        'id'           => $e->id,
+                        'razao_social' => $e->razao_social,
+                        'nome_fantasia'=> $e->nome_fantasia,
+                        'cidade'       => $e->cidade,
+                        'estado'       => $e->estado,
+                        'latitude'     => (float) $lat,
+                        'longitude'    => (float) $lng,
+                        'logo_url'     => $e->logo_url,
+                    ];
+                })->filter()->values();
         }
 
         if (in_array($tipo, ['franquias', 'todos'])) {
-            $data['franquias'] = Franquia::whereNotNull('latitude')
-                ->whereNotNull('longitude')
-                ->where('active', true)
-                ->get(['id', 'nome', 'tipo', 'cidade', 'estado', 'latitude', 'longitude'])
-                ->map(fn($f) => [
-                    'id'        => $f->id,
-                    'nome'      => $f->nome,
-                    'tipo'      => $f->tipo,
-                    'cidade'    => $f->cidade,
-                    'estado'    => $f->estado,
-                    'latitude'  => $f->latitude,
-                    'longitude' => $f->longitude,
-                ]);
+            $data['franquias'] = Franquia::where('active', true)
+                ->get(['id', 'nome', 'tipo', 'cidade', 'estado', 'bairro', 'latitude', 'longitude'])
+                ->map(function ($f) {
+                    $lat = $f->latitude;
+                    $lng = $f->longitude;
+                    if ((!$lat || !$lng) && ($f->cidade || $f->estado)) {
+                        $coords = $this->geocoder->geocode(null, null, $f->bairro, $f->cidade, $f->estado);
+                        if ($coords) {
+                            $f->update(['latitude' => $coords['latitude'], 'longitude' => $coords['longitude']]);
+                            $lat = $coords['latitude'];
+                            $lng = $coords['longitude'];
+                        }
+                    }
+                    if (!$lat || !$lng) return null;
+
+                    return [
+                        'id'        => $f->id,
+                        'nome'      => $f->nome,
+                        'tipo'      => $f->tipo,
+                        'cidade'    => $f->cidade,
+                        'estado'    => $f->estado,
+                        'latitude'  => (float) $lat,
+                        'longitude' => (float) $lng,
+                    ];
+                })->filter()->values();
         }
 
         return response()->json(['data' => $data]);

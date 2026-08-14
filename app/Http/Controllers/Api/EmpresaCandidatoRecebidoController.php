@@ -32,8 +32,24 @@ class EmpresaCandidatoRecebidoController extends Controller
                         ->orWhereHas('user', fn($u) => $u->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
                 });
             })
+        $perPage = min((int) $request->query('per_page', 20), 500);
+
+        $envios = $this->baseQuery($empresaId)
+            ->when($request->filled('origem'), fn($q) => $q->where('envios.origem', $request->origem))
+            ->when($request->filled('vaga_id'), fn($q) => $q->where('envios.vaga_id', $request->vaga_id))
+            ->when($request->filled('kanban_etapa_id'), fn($q) => $q->where('envios.kanban_etapa_id', $request->kanban_etapa_id))
+            ->when($request->filled('status'), fn($q) => $q->where('envios.status_empresa', $request->status))
+            ->when($request->filled('periodo_inicio'), fn($q) => $q->whereDate('envios.created_at', '>=', $request->periodo_inicio))
+            ->when($request->filled('periodo_fim'), fn($q) => $q->whereDate('envios.created_at', '<=', $request->periodo_fim))
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $s = $request->search;
+                $q->whereHas('candidato', function ($sub) use ($s) {
+                    $sub->where('telefone', 'like', "%{$s}%")
+                        ->orWhereHas('user', fn($u) => $u->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
+                });
+            })
             ->orderByDesc('envios.created_at')
-            ->paginate(20);
+            ->paginate($perPage);
 
         return response()->json([
             'data' => collect($envios->items())->map(fn($e) => $this->payload($e)),
@@ -245,13 +261,16 @@ class EmpresaCandidatoRecebidoController extends Controller
 
     private function baseQuery(int $empresaId)
     {
-        return Envio::with(['candidato.user:id,name,email', 'candidato.franquia:id,nome', 'vaga:id,titulo,salario_min,salario_max,canal', 'kanbanEtapa:id,nome', 'pareceres'])
+        return Envio::with(['candidato.user:id,name,email', 'candidato.franquia:id,nome', 'franquia:id,nome', 'vaga:id,titulo,salario_min,salario_max,canal', 'kanbanEtapa:id,nome', 'pareceres'])
             ->whereHas('vaga', fn($q) => $q->where('empresa_id', $empresaId));
     }
 
     private function payload(Envio $e): array
     {
         $parecer = $e->relationLoaded('pareceres') ? $e->pareceres->sortByDesc('created_at')->first() : null;
+        $franquiaNome = $e->franquia?->nome
+            ?? $e->candidato?->franquia?->nome
+            ?? ($e->origem === 'franquia' ? 'Franquia' : null);
 
         return [
             'id'                => $e->id,
@@ -259,8 +278,8 @@ class EmpresaCandidatoRecebidoController extends Controller
             'vaga_id'           => $e->vaga_id,
             'kanban_etapa_id'   => $e->kanban_etapa_id,
             'kanban_etapa_nome' => $e->kanbanEtapa?->nome ?? 'Recebido',
-            'origem'            => $e->origem,
-            'franquia_nome'     => $e->candidato?->franquia?->nome,
+            'origem'            => $e->origem ?? ($e->franquia_id ? 'franquia' : 'plataforma'),
+            'franquia_nome'     => $franquiaNome,
             'status'            => $e->status_empresa,
             'parecer_id'        => $parecer?->id,
             'parecer_texto'     => $parecer?->texto,
