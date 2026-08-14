@@ -18,20 +18,6 @@ class EmpresaCandidatoRecebidoController extends Controller
     {
         $empresaId = $this->tokenContextId($request);
 
-        $envios = $this->baseQuery($empresaId)
-            ->when($request->filled('origem'), fn($q) => $q->where('envios.origem', $request->origem))
-            ->when($request->filled('vaga_id'), fn($q) => $q->where('envios.vaga_id', $request->vaga_id))
-            ->when($request->filled('kanban_etapa_id'), fn($q) => $q->where('envios.kanban_etapa_id', $request->kanban_etapa_id))
-            ->when($request->filled('status'), fn($q) => $q->where('envios.status_empresa', $request->status))
-            ->when($request->filled('periodo_inicio'), fn($q) => $q->whereDate('envios.created_at', '>=', $request->periodo_inicio))
-            ->when($request->filled('periodo_fim'), fn($q) => $q->whereDate('envios.created_at', '<=', $request->periodo_fim))
-            ->when($request->filled('search'), function ($q) use ($request) {
-                $s = $request->search;
-                $q->whereHas('candidato', function ($sub) use ($s) {
-                    $sub->where('telefone', 'like', "%{$s}%")
-                        ->orWhereHas('user', fn($u) => $u->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"));
-                });
-            })
         $perPage = min((int) $request->query('per_page', 20), 500);
 
         $envios = $this->baseQuery($empresaId)

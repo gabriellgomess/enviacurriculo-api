@@ -221,6 +221,18 @@ class FranquiaFinanceiroController extends Controller
             $taxa = isset($taxas[$key]) ? $taxas[$key]->percentual : 100;
             $isFaturado = isset($faturadosIds[$e->id]) || isset($faturadosCandVaga["{$e->candidato_id}-{$e->vaga_id}"]);
 
+            $dataAdmissaoStr = null;
+            if (!empty($e->data_admissao)) {
+                $dataAdmissaoStr = is_string($e->data_admissao) ? substr($e->data_admissao, 0, 10) : ($e->data_admissao instanceof \DateTimeInterface ? $e->data_admissao->format('Y-m-d') : (string) $e->data_admissao);
+            } elseif (!empty($e->updated_at)) {
+                $dataAdmissaoStr = is_string($e->updated_at) ? substr($e->updated_at, 0, 10) : ($e->updated_at instanceof \DateTimeInterface ? $e->updated_at->format('Y-m-d') : (string) $e->updated_at);
+            }
+
+            $dataAprovacaoStr = null;
+            if (!empty($e->updated_at)) {
+                $dataAprovacaoStr = is_string($e->updated_at) ? $e->updated_at : ($e->updated_at instanceof \DateTimeInterface ? $e->updated_at->format('Y-m-d H:i:s') : (string) $e->updated_at);
+            }
+
             return [
                 'id'                 => $e->id,
                 'empresa_nome'       => $e->vaga?->empresa?->razao_social,
@@ -232,8 +244,8 @@ class FranquiaFinanceiroController extends Controller
                 'taxa_servico'       => (float) $taxa,
                 'prazo_vencimento'   => $e->vaga?->empresa?->prazo_vencimento_dias ?? 30,
                 'prazo_reposicao'    => $e->vaga?->empresa?->reposicao_dias ?? 30,
-                'data_aprovacao'     => $e->updated_at,
-                'data_admissao'      => $e->data_admissao?->toDateString() ?? $e->updated_at?->toDateString(),
+                'data_aprovacao'     => $dataAprovacaoStr,
+                'data_admissao'      => $dataAdmissaoStr,
                 'status_faturamento' => $isFaturado ? 'faturado' : 'pendente',
             ];
         })]);

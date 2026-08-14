@@ -56,13 +56,7 @@ class EmpresaBancoCurriculoController extends Controller
         // Ingere no banco interno os candidatos que aplicaram em vagas da empresa
         $this->ingerirEnvios($empresaId);
 
-        $curriculos = EmpresaCurriculo::where('empresa_id', $empresaId)
-            ->when($request->filled('q'), function ($query) use ($request) {
-                $s = $request->q;
-                $query->where(fn($q) => $q->where('nome', 'like', "%{$s}%")
-                    ->orWhere('cargo_desejado', 'like', "%{$s}%")
-                    ->orWhere('email', 'like', "%{$s}%"));
-            $perPage = min((int) $request->query('per_page', 20), 500);
+        $perPage = min((int) $request->query('per_page', 20), 500);
 
         $curriculos = EmpresaCurriculo::where('empresa_id', $empresaId)
             ->when($request->filled('q'), function ($query) use ($request) {
