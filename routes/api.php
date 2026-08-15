@@ -211,6 +211,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('franquias/{franquia}/documentos/{documento}/download', [FranquiaDocumentoController::class, 'download']);
 
         // Empresas
+        // Relatório de Processos — candidatos vinculados a vagas
+        Route::get('relatorios/processos', [\App\Http\Controllers\Api\AdminRelatorioProcessoController::class, 'index']);
+
         Route::get('empresas/relatorios',          [EmpresaController::class, 'relatorios']);
         Route::get('empresas/niveis-vagas',        [EmpresaController::class, 'niveisVagas']);
         Route::get('empresas/beneficios-catalogo', [EmpresaController::class, 'beneficiosCatalogo']);
