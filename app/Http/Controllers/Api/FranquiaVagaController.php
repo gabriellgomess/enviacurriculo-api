@@ -494,9 +494,13 @@ class FranquiaVagaController extends Controller
 
         $candidato = Candidato::findOrFail($request->candidato_id);
 
-        if (!$candidato->pareceres()->exists()) {
+        // O parecer precisa ser DESTA franquia. Antes bastava existir qualquer
+        // parecer, de qualquer origem: uma franquia vinculava candidato
+        // avaliado por outra sem ter escrito nada.
+        if (!$candidato->pareceres()->where('franquia_id', $franquiaId)->exists()) {
             return response()->json([
-                'message' => 'Candidato precisa ter um parecer registrado antes de ser vinculado a uma vaga.',
+                'message' => 'Registre o parecer deste candidato antes de vinculá-lo a uma vaga. '
+                           . 'Parecer de outra franquia não vale para a sua.',
             ], 422);
         }
 

@@ -261,7 +261,9 @@ class FranquiaCandidatoController extends Controller
 
         $query = $this->candidatosVisiveisQuery($franquiaId, $vagaIds)
             ->with(['user:id,name,email', 'franquia:id,nome'])
-            ->withExists('pareceres as tem_parecer')
+            // tem_parecer é o que habilita "Vincular" na tela: precisa refletir
+            // a mesma regra do endpoint, ou seja, parecer DESTA franquia.
+            ->withExists(['pareceres as tem_parecer' => fn($p) => $p->where('franquia_id', $franquiaId)])
             ->where('active', true);
 
         // Busca livre — nome, e-mail, cargo, cidade e CPF. Antes o campo da
@@ -290,7 +292,7 @@ class FranquiaCandidatoController extends Controller
         // os 100 mais recentes e descartava no navegador quem não tinha parecer,
         // então a franquia só alcançava os cadastros novos.
         if ($request->boolean('com_parecer')) {
-            $query->whereHas('pareceres');
+            $query->whereHas('pareceres', fn($p) => $p->where('franquia_id', $franquiaId));
         }
 
         if ($request->filled('cargo')) {
@@ -741,9 +743,11 @@ class FranquiaCandidatoController extends Controller
 
         $candidato = Candidato::findOrFail($candidatoId);
 
-        if (!$candidato->pareceres()->exists()) {
+        // O parecer precisa ser DESTA franquia — ver FranquiaVagaController.
+        if (!$candidato->pareceres()->where('franquia_id', $franquiaId)->exists()) {
             return response()->json([
-                'message' => 'Candidato precisa ter um parecer registrado antes de ser vinculado a uma vaga.',
+                'message' => 'Registre o parecer deste candidato antes de vinculá-lo a uma vaga. '
+                           . 'Parecer de outra franquia não vale para a sua.',
             ], 422);
         }
 
