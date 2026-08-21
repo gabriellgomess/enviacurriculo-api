@@ -886,16 +886,32 @@ class FranquiaCandidatoController extends Controller
         $franquiaId = $this->tokenContextId($request);
         $parecer = CandidatoParecer::where('franquia_id', $franquiaId)->findOrFail($id);
 
+        // vaga_id e empresa_id faltavam aqui: a tela deixava trocar a empresa,
+        // mas a validação descartava o campo e o parecer ficava com a empresa
+        // antiga — ou nula, virando um traço na lista. O `storeParecer` sempre
+        // aceitou os dois, o que explica funcionar ao duplicar e não ao editar.
         $validated = $request->validate([
-            'texto' => 'required|string|max:5000',
-            'nota'  => 'nullable|integer|min:1|max:5',
-            'dados' => 'nullable|array',
+            'vaga_id'    => 'nullable|integer|exists:vagas,id',
+            'empresa_id' => 'nullable|integer|exists:empresas,id',
+            'texto'      => 'required|string|max:5000',
+            'nota'       => 'nullable|integer|min:1|max:5',
+            'dados'      => 'nullable|array',
         ]);
 
-        $parecer->update(array_merge([
+        $dados = [
             'texto' => $validated['texto'],
             'nota'  => $validated['nota'] ?? null,
-        ], array_key_exists('dados', $validated) ? ['dados' => $validated['dados']] : []));
+        ];
+
+        // Só sobrescreve o que veio na requisição. Assim uma tela que não envia
+        // esses campos continua funcionando sem apagar o vínculo existente.
+        foreach (['vaga_id', 'empresa_id', 'dados'] as $campo) {
+            if (array_key_exists($campo, $validated)) {
+                $dados[$campo] = $validated[$campo];
+            }
+        }
+
+        $parecer->update($dados);
 
         // Alteração do teste no parecer reflete na tela "Testes" da empresa
         app(\App\Services\SincronizacaoAgendamentosParecer::class)->doParecer($parecer);
