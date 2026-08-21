@@ -60,6 +60,13 @@ class AdminRelatorioProcessoController extends Controller
             $query->whereDate('data_admissao', '<=', $request->admissao_ate);
         }
 
+        if ($request->filled('salario_de')) {
+            $query->where('salario_aprovado', '>=', $request->salario_de);
+        }
+        if ($request->filled('salario_ate')) {
+            $query->where('salario_aprovado', '<=', $request->salario_ate);
+        }
+
         if ($request->filled('busca')) {
             $termo = trim($request->busca);
             $query->where(function ($q) use ($termo) {
