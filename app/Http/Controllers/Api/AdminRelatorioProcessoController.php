@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Envio;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Relatório de Processos — a lista de candidatos vinculados a vagas, com quem
@@ -68,10 +69,12 @@ class AdminRelatorioProcessoController extends Controller
             });
         }
 
-        // Teto alto porque a exportação em PDF pede o relatório inteiro.
+        $this->aplicarOrdenacao($query, $request->get('sort'), $request->get('dir'));
+
+        // Teto alto porque a exportação em PDF/Excel pede o relatório inteiro.
         $perPage = min((int) $request->input('per_page', 50), 5000);
 
-        $envios = $query->orderByDesc('created_at')->paginate($perPage);
+        $envios = $query->paginate($perPage);
 
         $itens = $envios->getCollection()->map(fn($e) => [
             'id'              => $e->id,
@@ -82,6 +85,7 @@ class AdminRelatorioProcessoController extends Controller
             'vaga_codigo'     => $e->vaga?->codigo,
             'empresa'         => $e->vaga?->empresa?->razao_social ?? $e->vaga?->empresa?->nome_fantasia ?? '—',
             'status'          => $e->status,
+            'salario'         => $e->salario_aprovado,
             'vinculado_em'    => $e->created_at?->toDateString(),
             'data_admissao'   => $e->data_admissao?->toDateString(),
         ]);
@@ -103,5 +107,52 @@ class AdminRelatorioProcessoController extends Controller
                 'por_status'   => $porStatus,
             ],
         ]);
+    }
+
+    /**
+     * Ordena por qualquer coluna, inclusive as de tabelas relacionadas, sem
+     * alterar o SELECT/WHERE principal da consulta — cada coluna relacionada
+     * usa uma subconsulta correlacionada (ORDER BY (SELECT ...)), em vez de
+     * LEFT JOIN, para não arriscar ambiguidade de coluna nem duplicar linhas.
+     */
+    private function aplicarOrdenacao($query, ?string $campo, ?string $direcao): void
+    {
+        $dir = $direcao === 'asc' ? 'asc' : 'desc';
+
+        $subconsultas = [
+            'franquia' => fn() => DB::table('franquias')
+                ->select('nome')
+                ->whereColumn('franquias.id', 'envios.franquia_id'),
+            'candidato' => fn() => DB::table('candidatos')
+                ->join('users', 'users.id', '=', 'candidatos.user_id')
+                ->select('users.name')
+                ->whereColumn('candidatos.id', 'envios.candidato_id'),
+            'vaga' => fn() => DB::table('vagas')
+                ->select('titulo')
+                ->whereColumn('vagas.id', 'envios.vaga_id'),
+            'empresa' => fn() => DB::table('vagas')
+                ->join('empresas', 'empresas.id', '=', 'vagas.empresa_id')
+                ->select('empresas.razao_social')
+                ->whereColumn('vagas.id', 'envios.vaga_id'),
+        ];
+
+        $colunasDiretas = ['status', 'vinculado_em', 'data_admissao', 'salario'];
+        $colunaDireta = [
+            'vinculado_em'  => 'created_at',
+            'data_admissao' => 'data_admissao',
+            'salario'       => 'salario_aprovado',
+            'status'        => 'status',
+        ];
+
+        if ($campo && isset($subconsultas[$campo])) {
+            $query->orderBy($subconsultas[$campo](), $dir);
+        } elseif ($campo && in_array($campo, $colunasDiretas, true)) {
+            $query->orderBy($colunaDireta[$campo], $dir);
+        } else {
+            $query->orderBy('created_at', $dir);
+        }
+
+        // Critério de desempate estável quando a coluna ordenada tem repetidos.
+        $query->orderBy('id', $dir);
     }
 }
