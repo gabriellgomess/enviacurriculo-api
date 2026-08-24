@@ -65,7 +65,11 @@ class FranquiaRelatorioProcessoController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            // "Pendente" na interface é `enviado` no banco — ver a explicação
+            // em AdminRelatorioProcessoController.
+            $request->status === 'enviado'
+                ? $query->whereIn('status', ['enviado', 'pendente'])
+                : $query->where('status', $request->status);
         }
 
         if ($request->filled('vinculo_de')) {

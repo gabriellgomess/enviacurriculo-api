@@ -1031,7 +1031,11 @@ class FranquiaCandidatoController extends Controller
         $vagaIds    = $this->vagaIds($franquiaId);
 
         $data = $request->validate([
-            'status'           => 'required|in:enviado,visualizado,em_processo,em_entrevista,pendente,aprovado,reprovado,desistiu,reposicao',
+            // `pendente` segue aceito por compatibilidade com versões antigas
+            // da tela, mas é normalizado para `enviado` logo abaixo: os dois
+            // nomeavam a mesma etapa. `em_entrevista` saiu — nenhuma tela do
+            // sistema jamais ofereceu essa opção.
+            'status'           => 'required|in:enviado,visualizado,em_processo,pendente,aprovado,reprovado,desistiu,reposicao',
             'observacao'       => 'nullable|string',
             'salario_aprovado' => 'nullable|numeric|min:0',
             'tipo_contrato'    => 'nullable|string|max:50',
@@ -1055,11 +1059,14 @@ class FranquiaCandidatoController extends Controller
             ], 403);
         }
 
+        // `pendente` e `enviado` são a mesma etapa; o banco guarda `enviado`.
+        $status = $data['status'] === 'pendente' ? 'enviado' : $data['status'];
+
         // status sempre; demais campos apenas quando enviados pelo front
         $envio->fill([
-            'status' => $data['status'],
+            'status' => $status,
             // Mesmo processo seletivo: reflete no painel da empresa
-            'status_empresa' => Envio::statusEmpresaPara($data['status']),
+            'status_empresa' => Envio::statusEmpresaPara($status),
         ]);
         foreach (['observacao', 'salario_aprovado', 'tipo_contrato', 'data_admissao', 'data_saida'] as $campo) {
             if (array_key_exists($campo, $data)) {

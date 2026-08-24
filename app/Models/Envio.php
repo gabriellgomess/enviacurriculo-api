@@ -55,14 +55,19 @@ class Envio extends Model
         };
     }
 
-    /** Status da empresa → status equivalente para franquia/candidato. */
+    /**
+     * Status da empresa → status equivalente para franquia/candidato.
+     *
+     * "pendente" existe só no vocabulário da empresa. Do lado da franquia o
+     * mesmo estado se chama `enviado` — e é assim que a interface o exibe, com
+     * o rótulo "Pendente". Gravar `pendente` aqui criava dois valores para a
+     * mesma etapa, que era o que os relatórios mostravam em selos separados.
+     */
     public static function statusFranquiaPara(string $statusEmpresa, ?string $statusAtual = null): string
     {
         return match ($statusEmpresa) {
-            // "pendente" na empresa não deve rebaixar um envio já em andamento
-            'pendente' => in_array($statusAtual, ['enviado', 'visualizado'], true)
-                ? $statusAtual
-                : 'pendente',
+            // Não rebaixa um envio que a franquia já marcou como visualizado.
+            'pendente' => $statusAtual === 'visualizado' ? 'visualizado' : 'enviado',
             default    => $statusEmpresa,
         };
     }

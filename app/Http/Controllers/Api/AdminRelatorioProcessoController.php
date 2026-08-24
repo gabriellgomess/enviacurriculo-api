@@ -43,7 +43,12 @@ class AdminRelatorioProcessoController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            // "Pendente" na interface é `enviado` no banco. O `pendente` entra
+            // junto como rede de segurança: se algum registro tiver escapado do
+            // ec:normalizar-status-envios, ainda aparece no lugar certo.
+            $request->status === 'enviado'
+                ? $query->whereIn('status', ['enviado', 'pendente'])
+                : $query->where('status', $request->status);
         }
 
         if ($request->filled('vinculo_de')) {
