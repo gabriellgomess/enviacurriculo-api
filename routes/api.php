@@ -590,6 +590,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Relatórios
         Route::get('relatorios', [FranquiaRelatorioController::class, 'index']);
+        // Relatório de Processos — escopo por tipo (premium/start) no controller
+        Route::get('relatorios/processos', [\App\Http\Controllers\Api\FranquiaRelatorioProcessoController::class, 'index']);
         Route::get('relatorios-gerenciais/{tipo}', [\App\Http\Controllers\Api\FranquiaRelatorioGerencialController::class, 'show']);
 
         // Vagas
