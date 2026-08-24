@@ -94,6 +94,12 @@ class FranquiaVagaController extends Controller
         if ($request->filled('empresa_id')) {
             $query->where('empresa_id', $request->empresa_id);
         }
+        // Unidade dona da vaga. Só franquia premium é dona, então o seletor da
+        // tela lista apenas essas — inclusive a Unidade Matriz, que concentra
+        // todo o acervo migrado.
+        if ($request->filled('franquia_id')) {
+            $query->where('franquia_id', $request->franquia_id);
+        }
         if ($request->filled('genero')) {
             $query->where('genero', $request->genero);
         }
@@ -292,7 +298,10 @@ class FranquiaVagaController extends Controller
         $franquiaId = $this->tokenContextId($request);
 
         $franquias = Franquia::where('active', true)
-            ->where('id', '!=', $franquiaId)
+            // O uso original é convidar OUTRAS franquias, daí excluir a atual.
+            // Com `todas=1` a própria entra, para o filtro de unidade da tela
+            // de vagas — uma premium precisa poder filtrar as vagas dela mesma.
+            ->when(!$request->boolean('todas'), fn($q) => $q->where('id', '!=', $franquiaId))
             ->orderBy('nome')
             ->get(['id', 'codigo', 'nome', 'tipo', 'cidade', 'estado', 'cidade_empresa', 'estado_empresa'])
             ->map(fn($f) => [
