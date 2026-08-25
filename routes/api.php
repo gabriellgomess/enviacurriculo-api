@@ -71,6 +71,9 @@ use Illuminate\Support\Facades\Route;
 Route::get('stats', [StatsController::class, 'index']);
 Route::post('contatos', [StatsController::class, 'contato']);
 
+// Cargos — público, usado no formulário de cadastro do candidato (antes do login)
+Route::get('cargos', [\App\Http\Controllers\Api\AdminCargoController::class, 'index']);
+
 // Geocoding — público, usado por todos os painéis
 Route::prefix('geocode')->group(function () {
     Route::get('cep',     [GeocodeController::class, 'cep']);
@@ -166,6 +169,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('agenda/tarefas/{id}',        [App\Http\Controllers\Api\AgendaController::class, 'destroy']);
     Route::get('agenda/aniversarios',           [App\Http\Controllers\Api\AgendaController::class, 'aniversarios']);
     Route::get('tipos-contrato',                [\App\Http\Controllers\Api\AdminCadastroController::class, 'indexTiposContrato']);
+    Route::get('tipos-formacao',                [\App\Http\Controllers\Api\AdminTipoFormacaoController::class, 'index']);
 
     /*
     |--------------------------------------------------------------------------
@@ -382,6 +386,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('configuracoes/tipo-niveis-vagas',       [AdminNivelVagaController::class, 'store']);
         Route::put('configuracoes/tipo-niveis-vagas/{id}',   [AdminNivelVagaController::class, 'update']);
         Route::delete('configuracoes/tipo-niveis-vagas/{id}', [AdminNivelVagaController::class, 'destroy']);
+        Route::get('configuracoes/cargos',                   [\App\Http\Controllers\Api\AdminCargoController::class, 'index']);
+        Route::post('configuracoes/cargos',                  [\App\Http\Controllers\Api\AdminCargoController::class, 'store']);
+        Route::put('configuracoes/cargos/{id}',               [\App\Http\Controllers\Api\AdminCargoController::class, 'update']);
+        Route::delete('configuracoes/cargos/{id}',            [\App\Http\Controllers\Api\AdminCargoController::class, 'destroy']);
+        Route::get('configuracoes/tipos-formacao',            [\App\Http\Controllers\Api\AdminTipoFormacaoController::class, 'index']);
+        Route::post('configuracoes/tipos-formacao',           [\App\Http\Controllers\Api\AdminTipoFormacaoController::class, 'store']);
+        Route::put('configuracoes/tipos-formacao/{id}',       [\App\Http\Controllers\Api\AdminTipoFormacaoController::class, 'update']);
+        Route::delete('configuracoes/tipos-formacao/{id}',    [\App\Http\Controllers\Api\AdminTipoFormacaoController::class, 'destroy']);
         Route::get('configuracoes/backup',                   [App\Http\Controllers\Api\AdminBackupController::class, 'index']);
         Route::post('configuracoes/backup',                  [App\Http\Controllers\Api\AdminBackupController::class, 'store']);
         Route::get('configuracoes/backup/{id}/download',     [App\Http\Controllers\Api\AdminBackupController::class, 'download']);

@@ -35,6 +35,8 @@ class RegisterCandidatoController extends Controller
             'experiencia_profissional'=> 'nullable|string',
             'educacao'                => 'nullable|string',
             'habilidades'             => 'nullable|string',
+            'cargos_interesse'        => 'nullable|array|max:8',
+            'cargos_interesse.*'      => 'string|max:100',
             // Arquivos
             'curriculo'               => 'required|file|max:10240|mimes:pdf,doc,docx,jpg,jpeg,png,webp',
             'cnh'                     => 'nullable|file|max:10240|mimes:pdf,jpg,jpeg,png,webp',
@@ -68,6 +70,8 @@ class RegisterCandidatoController extends Controller
                 'experiencia_profissional' => $validated['experiencia_profissional'] ?? null,
                 'educacao'                 => $validated['educacao'] ?? null,
                 'habilidades'              => $validated['habilidades'] ?? null,
+                'cargo_desejado'           => $validated['cargos_interesse'][0] ?? null,
+                'cargos_interesse'         => $validated['cargos_interesse'] ?? [],
                 'active'                   => true,
             ]);
 
