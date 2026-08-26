@@ -118,9 +118,9 @@ class EmpresaCandidatoRecebidoController extends Controller
             }
         }
 
-        if ($data['status'] === 'aprovado' && empty($envio->data_admissao)) {
-            $envio->data_admissao = now()->toDateString();
-        }
+        // Aprovar NÃO preenche a data de admissão sozinho — mesma regra do
+        // painel da franquia. Deixar em branco significa "data a definir", e
+        // gravar a data de hoje inventava uma admissão que não foi combinada.
 
         $envio->save();
 

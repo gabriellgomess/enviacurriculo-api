@@ -1073,9 +1073,10 @@ class FranquiaCandidatoController extends Controller
                 $envio->{$campo} = $data[$campo];
             }
         }
-        if ($data['status'] === 'aprovado' && empty($envio->data_admissao)) {
-            $envio->data_admissao = now()->toDateString();
-        }
+        // Aprovar NÃO preenche a data de admissão sozinho. Antes, quando o
+        // campo vinha em branco, o sistema gravava a data de hoje — o que
+        // registra uma admissão que ainda não foi combinada. Em branco é uma
+        // informação legítima: aprovado, data a definir.
         $envio->save();
 
         return response()->json(['message' => 'Status atualizado.', 'status' => $envio->status]);
