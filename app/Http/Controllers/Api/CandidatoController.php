@@ -220,6 +220,8 @@ class CandidatoController extends Controller
             'nascimento'               => 'nullable|date',
             'telefone'                 => 'nullable|string|max:20',
             'cargo_desejado'           => 'nullable|string|max:255',
+            'cargos_interesse'         => 'nullable|array|max:8',
+            'cargos_interesse.*'       => 'string|max:100',
             'cep'                      => 'nullable|string|max:9',
             'rua'                      => 'nullable|string|max:255',
             'numero'                   => 'nullable|string|max:20',
@@ -242,7 +244,10 @@ class CandidatoController extends Controller
             'cpf'                      => $validated['cpf']                      ?? $candidato->cpf,
             'nascimento'               => $validated['nascimento']               ?? $candidato->nascimento,
             'telefone'                 => $validated['telefone']                 ?? $candidato->telefone,
-            'cargo_desejado'           => $validated['cargo_desejado']           ?? $candidato->cargo_desejado,
+            'cargo_desejado'           => array_key_exists('cargos_interesse', $validated)
+                ? ($validated['cargos_interesse'][0] ?? null)
+                : ($validated['cargo_desejado'] ?? $candidato->cargo_desejado),
+            'cargos_interesse'         => $validated['cargos_interesse']         ?? $candidato->cargos_interesse,
             'cep'                      => $validated['cep']                      ?? $candidato->cep,
             'rua'                      => $validated['rua']                      ?? $candidato->rua,
             'numero'                   => $validated['numero']                   ?? $candidato->numero,
