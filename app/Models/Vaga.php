@@ -40,6 +40,7 @@ class Vaga extends Model
         'ocultar_salario_agencia',
         'ocultar_empresa_agencia',
         'ocultar_endereco_agencia',
+        'confidencial',
         'genero',
         'turno',
         'horario_trabalho',
@@ -63,6 +64,7 @@ class Vaga extends Model
         'ocultar_salario_agencia'  => 'boolean',
         'ocultar_empresa_agencia'  => 'boolean',
         'ocultar_endereco_agencia' => 'boolean',
+        'confidencial'    => 'boolean',
         'requer_validacao_premium' => 'boolean',
         'requisitantes'   => 'array',
     ];

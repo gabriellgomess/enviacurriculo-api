@@ -278,6 +278,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Currículos (Candidatos)
         Route::post('curriculos/extrair', \App\Http\Controllers\Api\CurriculoExtracaoController::class);
+        // Antes do apiResource: "status" não pode ser engolido pelo {candidato} do show.
+        Route::get('candidatos/status', [CandidatoController::class, 'status']);
+        Route::patch('candidatos/{candidatoId}/vagas/{vagaId}/status', [CandidatoController::class, 'updateStatus']);
         Route::apiResource('candidatos', CandidatoController::class);
         Route::patch('candidatos/{candidato}/toggle-active', [CandidatoController::class, 'toggleActive']);
         Route::get('candidatos/{candidato}/documentos/{documento}/download', [CandidatoController::class, 'downloadDocumento']);

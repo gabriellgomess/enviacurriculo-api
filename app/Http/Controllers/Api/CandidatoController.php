@@ -505,4 +505,109 @@ class CandidatoController extends Controller
             'message' => 'Candidato desvinculado com sucesso.'
         ]);
     }
+
+    /**
+     * GET /admin/candidatos/status
+     *
+     * Mesma tela de "Status Candidatos" da franquia, mas sem o recorte por
+     * franquia_id/vagas — o admin enxerga e altera o vínculo de qualquer
+     * candidato com qualquer vaga.
+     */
+    public function status(Request $request)
+    {
+        $query = \App\Models\Envio::with([
+            'candidato.user:id,name',
+            'candidato.franquia:id,nome',
+            'vaga:id,titulo,empresa_id,tipo_contrato',
+            'vaga.empresa:id,razao_social',
+        ]);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('search')) {
+            $termo = trim($request->search);
+            $query->where(function ($q) use ($termo) {
+                $q->whereHas('candidato.user', fn($u) => $u->where('name', 'like', "%{$termo}%"))
+                  ->orWhereHas('vaga', fn($v) => $v->where('titulo', 'like', "%{$termo}%"))
+                  ->orWhereHas('vaga.empresa', fn($e) => $e->where('razao_social', 'like', "%{$termo}%"));
+            });
+        }
+
+        $perPage = min((int) $request->query('per_page', 20), 100);
+        $envios  = $query->orderByDesc('created_at')->paginate($perPage);
+
+        $data = $envios->getCollection()->map(fn($e) => [
+            'id'                 => $e->id,
+            'candidato_id'       => $e->candidato_id,
+            'candidato_nome'     => $e->candidato?->user?->name ?? '—',
+            'vaga_id'            => $e->vaga_id,
+            'vaga_nome'          => $e->vaga?->titulo ?? '—',
+            'vaga_salario'       => $e->vaga?->salario_min ?? '—',
+            'empresa_nome'       => $e->vaga?->empresa?->razao_social ?? '—',
+            'franquia'           => $e->candidato?->franquia?->nome ?? '—',
+            'status'             => $e->status,
+            'observacao'         => $e->observacao,
+            'salario_aprovado'   => $e->salario_aprovado,
+            'tipo_contrato'      => $e->tipo_contrato,
+            'vaga_tipo_contrato' => $e->vaga?->tipo_contrato,
+            'data_admissao'      => $e->data_admissao?->toDateString(),
+            'data_saida'         => $e->data_saida?->toDateString(),
+            'created_at'         => $e->created_at,
+        ])->values();
+
+        return response()->json([
+            'data' => $data,
+            'meta' => [
+                'total'        => $envios->total(),
+                'per_page'     => $envios->perPage(),
+                'current_page' => $envios->currentPage(),
+                'last_page'    => $envios->lastPage(),
+            ],
+        ]);
+    }
+
+    /**
+     * PATCH /admin/candidatos/{candidatoId}/vagas/{vagaId}/status
+     *
+     * Mesmo comportamento de FranquiaCandidatoController::updateStatus, sem o
+     * recorte por franquia — o admin pode alterar qualquer vínculo.
+     */
+    public function updateStatus(Request $request, int $candidatoId, int $vagaId)
+    {
+        $data = $request->validate([
+            'status'           => 'required|in:enviado,visualizado,em_processo,pendente,aprovado,reprovado,desistiu,reposicao',
+            'observacao'       => 'nullable|string',
+            'salario_aprovado' => 'nullable|numeric|min:0',
+            'tipo_contrato'    => 'nullable|string|max:50',
+            'data_admissao'    => 'nullable|date',
+            'data_saida'       => 'nullable|date',
+        ]);
+
+        $envio = \App\Models\Envio::where('candidato_id', $candidatoId)->where('vaga_id', $vagaId)->first();
+
+        if (!$envio) {
+            return response()->json([
+                'message' => 'Vínculo não encontrado.',
+            ], 404);
+        }
+
+        // `pendente` e `enviado` são a mesma etapa; o banco guarda `enviado`.
+        $status = $data['status'] === 'pendente' ? 'enviado' : $data['status'];
+
+        $envio->fill([
+            'status' => $status,
+            // Mesmo processo seletivo: reflete no painel da empresa
+            'status_empresa' => \App\Models\Envio::statusEmpresaPara($status),
+        ]);
+        foreach (['observacao', 'salario_aprovado', 'tipo_contrato', 'data_admissao', 'data_saida'] as $campo) {
+            if (array_key_exists($campo, $data)) {
+                $envio->{$campo} = $data[$campo];
+            }
+        }
+        $envio->save();
+
+        return response()->json(['message' => 'Status atualizado.', 'status' => $envio->status]);
+    }
 }
