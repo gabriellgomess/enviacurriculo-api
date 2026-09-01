@@ -27,6 +27,18 @@ class FranquiaVagaController extends Controller
     }
 
     /**
+     * A flag ocultar_endereco_agencia só faz sentido quando a vaga tem um
+     * anúncio de agência de fato (canal 'agencia' ou 'ambos') — é o toggle que
+     * a empresa usa para esconder o endereço especificamente desse lado.
+     * Aplicá-la também a vagas canal='plataforma' escondia o endereço à toa,
+     * já que essas vagas não têm lado "agência" nenhum para essa flag valer.
+     */
+    private function ocultarEnderecoAgencia(Vaga $v): bool
+    {
+        return $v->ocultar_endereco_agencia && in_array($v->canal, ['agencia', 'ambos'], true);
+    }
+
+    /**
      * Executa uma query de Vaga já filtrada por acesso (dono, ou dono+compartilhada
      * conforme o caso) e retorna o registro. Se não encontrar nada, diferencia:
      * - a vaga não existe de fato               -> 404 "Vaga não encontrada."
@@ -127,9 +139,9 @@ class FranquiaVagaController extends Controller
             'empresa'           => $v->ocultar_empresa_agencia
                 ? ['id' => null, 'razao_social' => 'Empresa confidencial']
                 : ['id' => $v->empresa_id, 'razao_social' => $v->empresa?->razao_social ?? $v->empresa?->nome_fantasia ?? 'Empresa não informada'],
-            'cidade'            => $v->ocultar_endereco_agencia ? null : $v->cidade,
-            'estado'            => $v->ocultar_endereco_agencia ? null : $v->estado,
-            'bairro'            => $v->ocultar_endereco_agencia ? null : $v->bairro,
+            'cidade'            => $this->ocultarEnderecoAgencia($v) ? null : $v->cidade,
+            'estado'            => $this->ocultarEnderecoAgencia($v) ? null : $v->estado,
+            'bairro'            => $this->ocultarEnderecoAgencia($v) ? null : $v->bairro,
             'modalidade'        => $v->regime_trabalho,
             'tipo_contrato'     => $v->tipo_contrato,
             'salario_min'       => $v->ocultar_salario_agencia ? null : $v->salario_min,
@@ -343,12 +355,12 @@ class FranquiaVagaController extends Controller
             'requisitos'        => $vaga->requisitos,
             // Respeita as ocultações que a empresa definiu para a agência
             'empresa'           => $vaga->ocultar_empresa_agencia ? null : $vaga->empresa,
-            'cidade'            => $vaga->ocultar_endereco_agencia ? null : $vaga->cidade,
-            'estado'            => $vaga->ocultar_endereco_agencia ? null : $vaga->estado,
-            'bairro'            => $vaga->ocultar_endereco_agencia ? null : $vaga->bairro,
-            'cep'               => $vaga->ocultar_endereco_agencia ? null : $vaga->cep,
-            'logradouro'        => $vaga->ocultar_endereco_agencia ? null : $vaga->logradouro,
-            'numero'            => $vaga->ocultar_endereco_agencia ? null : $vaga->numero,
+            'cidade'            => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->cidade,
+            'estado'            => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->estado,
+            'bairro'            => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->bairro,
+            'cep'               => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->cep,
+            'logradouro'        => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->logradouro,
+            'numero'            => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->numero,
             'nivel_vaga_id'     => $vaga->nivel_vaga_id,
             'taxa_servico'      => $vaga->taxa_servico,
             'modalidade'        => $vaga->regime_trabalho,
