@@ -84,6 +84,10 @@ class FranquiaVagaController extends Controller
                 $query->where('status', 'publicada');
             } elseif ($request->status === 'inativa') {
                 $query->where('status', '!=', 'publicada');
+            } elseif ($request->status === 'confidencial') {
+                // Não é um valor de vagas.status — é a mesma aba, mas filtrando
+                // pela flag de confidencialidade em vez da situação da vaga.
+                $query->where('confidencial', true);
             } else {
                 $query->where('status', $request->status);
             }
@@ -605,7 +609,7 @@ class FranquiaVagaController extends Controller
         $vaga = $this->vagaOuAbortar(Vaga::where('franquia_id', $franquiaId), $id);
 
         $request->validate([
-            'documento' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'documento' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120',
         ]);
 
         if ($request->hasFile('documento')) {

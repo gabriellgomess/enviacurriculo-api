@@ -247,6 +247,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('vagas/{vaga}/status', [VagaController::class, 'changeStatus']);
         Route::post('vagas/{vaga}/convidar', [VagaController::class, 'convidarFranquias']);
         Route::get('vagas/{id}/candidatos', [VagaController::class, 'candidatos']);
+        Route::post('vagas/{id}/documentos', [VagaController::class, 'storeDocumento']);
+        Route::delete('vagas/{vagaId}/documentos/{docId}', [VagaController::class, 'destroyDocumento']);
 
         // Parceiros - Categorias e Relatórios
         Route::get('parceiros/categorias',         [AdminParceiroCategoriaController::class, 'index']);

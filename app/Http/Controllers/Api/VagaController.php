@@ -162,8 +162,44 @@ class VagaController extends Controller
                 'franquia:id,codigo,nome',
                 'nivelVaga:id,nome',
                 'franquiasCompartilhadas:id,nome',
+                'documentos',
             ])
         );
+    }
+
+    // POST /admin/vagas/{id}/documentos
+    public function storeDocumento(Request $request, int $id)
+    {
+        $vaga = Vaga::findOrFail($id);
+
+        $request->validate([
+            'documento' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:5120',
+        ]);
+
+        $file = $request->file('documento');
+        $path = $file->store('vagas/documentos', 'public');
+
+        $doc = \App\Models\VagaDocumento::create([
+            'vaga_id'      => $vaga->id,
+            'arquivo_path' => \Illuminate\Support\Facades\Storage::disk('public')->url($path),
+            'arquivo_nome' => $file->getClientOriginalName(),
+            'tamanho_kb'   => round($file->getSize() / 1024),
+        ]);
+
+        return response()->json(['message' => 'Documento adicionado.', 'data' => $doc], 201);
+    }
+
+    // DELETE /admin/vagas/{vagaId}/documentos/{docId}
+    public function destroyDocumento(int $vagaId, int $docId)
+    {
+        $doc = \App\Models\VagaDocumento::where('vaga_id', $vagaId)->findOrFail($docId);
+
+        $oldPath = str_replace(\Illuminate\Support\Facades\Storage::disk('public')->url(''), '', $doc->arquivo_path);
+        \Illuminate\Support\Facades\Storage::disk('public')->delete($oldPath);
+
+        $doc->delete();
+
+        return response()->json(['message' => 'Documento removido.']);
     }
 
     public function update(Request $request, Vaga $vaga)
