@@ -58,12 +58,15 @@ class Franquia extends Model
         'logo_url',
         // Permissões e status
         'menus_permitidos',
+        'modulo_multiusuario',
+        'titular_user_id',
         'active',
         'created_by',
     ];
 
     protected $casts = [
         'active'               => 'boolean',
+        'modulo_multiusuario'  => 'boolean',
         'latitude'             => 'float',
         'longitude'            => 'float',
         'latitude_empresa'     => 'float',
@@ -84,6 +87,21 @@ class Franquia extends Model
             'id',
             'user_id'
         )->where('user_contexts.role', 'franquia');
+    }
+
+    public function titularUser()
+    {
+        return $this->belongsTo(User::class, 'titular_user_id');
+    }
+
+    public function franquiaUsuarios()
+    {
+        return $this->hasMany(FranquiaUsuario::class);
+    }
+
+    public function assistentes()
+    {
+        return $this->hasMany(FranquiaUsuario::class)->where('tipo', 'assistente');
     }
 
     public function documentos()
@@ -108,6 +126,15 @@ class Franquia extends Model
 
     public function user()
     {
+        if ($this->titular_user_id) {
+            return $this->titularUser;
+        }
+
+        $titularVinculo = $this->franquiaUsuarios()->where('tipo', 'titular')->with('user')->first();
+        if ($titularVinculo?->user) {
+            return $titularVinculo->user;
+        }
+
         return UserContext::where('role', 'franquia')
             ->where('context_id', $this->id)
             ->with('user')

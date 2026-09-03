@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Franquia;
+use App\Models\FranquiaUsuario;
 use App\Models\User;
 use App\Models\UserContext;
 use App\Models\UserRole;
+use App\Services\AuditService;
 use App\Services\GeocodeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -101,6 +103,7 @@ class FranquiaController extends Controller
             'chave_pix'             => 'nullable|string|max:255',
             // Permissões e login
             'menus_permitidos'      => 'nullable|array',
+            'modulo_multiusuario'   => 'nullable|boolean',
             'active'                => 'boolean',
             'password'              => 'nullable|string|min:6',
         ], [
@@ -129,11 +132,12 @@ class FranquiaController extends Controller
             $franquia = Franquia::create(array_merge(
                 $validated,
                 [
-                    'latitude'          => $coords['latitude']           ?? null,
-                    'longitude'         => $coords['longitude']          ?? null,
-                    'latitude_empresa'  => $coordsEmpresa['latitude']    ?? null,
-                    'longitude_empresa' => $coordsEmpresa['longitude']   ?? null,
-                    'created_by'        => $request->user()->id,
+                    'modulo_multiusuario' => $request->boolean('modulo_multiusuario'),
+                    'latitude'            => $coords['latitude']           ?? null,
+                    'longitude'           => $coords['longitude']          ?? null,
+                    'latitude_empresa'    => $coordsEmpresa['latitude']    ?? null,
+                    'longitude_empresa'   => $coordsEmpresa['longitude']   ?? null,
+                    'created_by'          => $request->user()->id,
                 ]
             ));
 
@@ -157,7 +161,31 @@ class FranquiaController extends Controller
                     'role'       => 'franquia',
                     'context_id' => $franquia->id,
                 ]);
+
+                $franquia->update(['titular_user_id' => $user->id]);
+
+                FranquiaUsuario::create([
+                    'franquia_id' => $franquia->id,
+                    'user_id'     => $user->id,
+                    'tipo'        => 'titular',
+                    'cargo'       => 'Franqueado Titular',
+                    'ativo'       => $validated['active'] ?? true,
+                    'created_by'  => $request->user()->id,
+                ]);
             }
+
+            AuditService::log(
+                action: 'franquia.criada',
+                descricao: "Admin {$request->user()?->name} cadastrou a franquia {$franquia->nome} ({$franquia->codigo})",
+                franquiaId: $franquia->id,
+                entity: $franquia,
+                dadosNovos: [
+                    'nome' => $franquia->nome,
+                    'tipo' => $franquia->tipo,
+                    'modulo_multiusuario' => (bool) $franquia->modulo_multiusuario,
+                ],
+                request: $request
+            );
 
             return response()->json($franquia->fresh(), 201);
         });
@@ -170,9 +198,11 @@ class FranquiaController extends Controller
 
         return response()->json([
             ...$franquia->toArray(),
-            'login_email' => $user?->email,
-            'user_id'     => $user?->id,
-            'criado_por'  => $franquia->createdBy?->name,
+            'login_email'        => $user?->email,
+            'user_id'            => $user?->id,
+            'criado_por'         => $franquia->createdBy?->name,
+            'total_assistentes'  => $franquia->assistentes()->count(),
+            'total_usuarios'     => $franquia->franquiaUsuarios()->count(),
         ]);
     }
 
@@ -212,13 +242,14 @@ class FranquiaController extends Controller
             'tipo_conta'            => 'nullable|in:corrente,poupanca',
             'chave_pix'             => 'nullable|string|max:255',
             'menus_permitidos'      => 'nullable|array',
+            'modulo_multiusuario'   => 'nullable|boolean',
             'active'                => 'boolean',
             'password'              => 'nullable|string|min:6',
         ], [
             'email.unique' => 'Já existe um usuário cadastrado com este e-mail.',
         ]);
 
-        return DB::transaction(function () use ($validated, $franquia) {
+        return DB::transaction(function () use ($validated, $franquia, $request) {
             // Re-geocoda apenas se endereço pessoal mudou
             if ($franquia->cidade !== ($validated['cidade'] ?? null) ||
                 $franquia->estado !== ($validated['estado'] ?? null)) {
@@ -247,10 +278,14 @@ class FranquiaController extends Controller
                 $validated['longitude_empresa'] = $coordsEmpresa['longitude'] ?? $franquia->longitude_empresa;
             }
 
+            if ($request->has('modulo_multiusuario')) {
+                $validated['modulo_multiusuario'] = $request->boolean('modulo_multiusuario');
+            }
+
             unset($validated['password']);
             $franquia->update($validated);
 
-            // Atualiza ou cria usuário vinculado
+            // Atualiza ou cria usuário titular vinculado
             $user = $franquia->user();
             $password = request('password');
 
@@ -265,6 +300,15 @@ class FranquiaController extends Controller
                     $userUpdate['password'] = Hash::make($password);
                 }
                 $user->update($userUpdate);
+
+                if (!$franquia->titular_user_id) {
+                    $franquia->update(['titular_user_id' => $user->id]);
+                }
+
+                FranquiaUsuario::firstOrCreate(
+                    ['franquia_id' => $franquia->id, 'user_id' => $user->id],
+                    ['tipo' => 'titular', 'cargo' => 'Franqueado Titular', 'ativo' => $user->active]
+                );
             } elseif (!empty($validated['email']) && $password) {
                 $newUser = User::create([
                     'name'     => $validated['responsavel'] ?? $validated['nome'],
@@ -279,28 +323,81 @@ class FranquiaController extends Controller
                     'role'       => 'franquia',
                     'context_id' => $franquia->id,
                 ]);
+
+                $franquia->update(['titular_user_id' => $newUser->id]);
+
+                FranquiaUsuario::create([
+                    'franquia_id' => $franquia->id,
+                    'user_id'     => $newUser->id,
+                    'tipo'        => 'titular',
+                    'cargo'       => 'Franqueado Titular',
+                    'ativo'       => $validated['active'] ?? true,
+                    'created_by'  => $request->user()->id,
+                ]);
             }
+
+            AuditService::log(
+                action: 'franquia.atualizada',
+                descricao: "Admin {$request->user()?->name} atualizou os dados da franquia {$franquia->nome}",
+                franquiaId: $franquia->id,
+                entity: $franquia,
+                request: $request
+            );
 
             return response()->json($franquia->fresh());
         });
     }
 
-    public function destroy(Franquia $franquia)
+    public function destroy(Request $request, Franquia $franquia)
     {
-        $user = $franquia->user();
-        $user?->delete();
+        $userIds = UserContext::where('role', 'franquia')
+            ->where('context_id', $franquia->id)
+            ->pluck('user_id');
+
+        FranquiaUsuario::where('franquia_id', $franquia->id)->delete();
+        UserContext::where('role', 'franquia')->where('context_id', $franquia->id)->delete();
+
+        foreach ($userIds as $uid) {
+            if (!UserContext::where('user_id', $uid)->exists()) {
+                UserRole::where('user_id', $uid)->delete();
+                User::where('id', $uid)->delete();
+            }
+        }
+
+        AuditService::log(
+            action: 'franquia.removida',
+            descricao: "Admin {$request->user()?->name} removeu a franquia {$franquia->nome} ({$franquia->codigo})",
+            franquiaId: $franquia->id,
+            request: $request
+        );
+
         $franquia->delete();
 
         return response()->json(['message' => 'Franquia removida com sucesso.']);
     }
 
-    public function toggleActive(Franquia $franquia)
+    public function toggleActive(Request $request, Franquia $franquia)
     {
-        $franquia->update(['active' => !$franquia->active]);
+        $novoStatus = !$franquia->active;
+        $franquia->update(['active' => $novoStatus]);
 
-        // Sincroniza status do usuário vinculado
-        $user = $franquia->user();
-        $user?->update(['active' => $franquia->active]);
+        // Sincroniza status de todos os vínculos e usuários vinculados à franquia
+        FranquiaUsuario::where('franquia_id', $franquia->id)->update(['ativo' => $novoStatus]);
+
+        $userIds = UserContext::where('role', 'franquia')
+            ->where('context_id', $franquia->id)
+            ->pluck('user_id');
+
+        if ($userIds->isNotEmpty()) {
+            User::whereIn('id', $userIds)->update(['active' => $novoStatus]);
+        }
+
+        AuditService::log(
+            action: 'franquia.status_alterado',
+            descricao: "Admin {$request->user()?->name} alterou status da franquia {$franquia->nome} para " . ($novoStatus ? 'Ativa' : 'Inativa'),
+            franquiaId: $franquia->id,
+            request: $request
+        );
 
         return response()->json($franquia->fresh());
     }

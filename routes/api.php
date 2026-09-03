@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AdminChamadoController;
 use App\Http\Controllers\Api\AdminFinanceiroController;
+use App\Http\Controllers\Api\AdminFranquiaUsuarioController;
 use App\Http\Controllers\Api\CnpjController;
 use App\Http\Controllers\Api\AdminGestaoFranquiasController;
 use App\Http\Controllers\Api\AdminNotaFiscalController;
@@ -213,6 +214,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('franquias/{franquia}/documentos', [FranquiaDocumentoController::class, 'store']);
         Route::delete('franquias/{franquia}/documentos/{documento}', [FranquiaDocumentoController::class, 'destroy']);
         Route::get('franquias/{franquia}/documentos/{documento}/download', [FranquiaDocumentoController::class, 'download']);
+
+        // Usuários da Franquia (Módulo Multi-usuários / Assistentes — Admin-only)
+        Route::prefix('franquias/{franquia}')->group(function () {
+            Route::get('usuarios',                           [AdminFranquiaUsuarioController::class, 'index']);
+            Route::post('usuarios',                          [AdminFranquiaUsuarioController::class, 'store']);
+            Route::put('usuarios/{usuario}',                 [AdminFranquiaUsuarioController::class, 'update']);
+            Route::patch('usuarios/{usuario}/toggle-active', [AdminFranquiaUsuarioController::class, 'toggleActive']);
+            Route::delete('usuarios/{usuario}',              [AdminFranquiaUsuarioController::class, 'destroy']);
+        });
 
         // Empresas
         // Relatório de Processos — candidatos vinculados a vagas
@@ -438,7 +448,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('vinculos', [AdminGestaoFranquiasController::class, 'vinculos']);
 
             // Registro de acessos
-            Route::get('acessos', [AdminGestaoFranquiasController::class, 'acessos']);
+            Route::get('acessos',   [AdminGestaoFranquiasController::class, 'acessos']);
+            Route::get('auditoria', [AdminGestaoFranquiasController::class, 'auditoria']);
         });
     });
 

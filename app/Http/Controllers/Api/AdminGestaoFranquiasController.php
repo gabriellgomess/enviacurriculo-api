@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AccessLog;
+use App\Models\AuditLog;
 use App\Models\FranquiaOnboardingItem;
 use App\Models\FranquiaOnboardingProgresso;
 use App\Models\MetaFranquia;
@@ -243,5 +244,35 @@ class AdminGestaoFranquiasController extends Controller
             ->get();
 
         return response()->json($logs);
+    }
+
+    /* ─── Registro de auditoria ──────────────────────────────────────── */
+
+    public function auditoria(Request $request)
+    {
+        try {
+            $query = AuditLog::with('franquia:id,nome,codigo')
+                ->when($request->filled('franquia_id'), fn($q) => $q->where('franquia_id', $request->franquia_id))
+                ->when($request->filled('action'), fn($q) => $q->where('action', $request->action))
+                ->when($request->filled('busca'), function ($q) use ($request) {
+                    $busca = $request->busca;
+                    $q->where(function ($sub) use ($busca) {
+                        $sub->where('user_name', 'like', "%{$busca}%")
+                            ->orWhere('user_email', 'like', "%{$busca}%")
+                            ->orWhere('descricao', 'like', "%{$busca}%");
+                    });
+                })
+                ->when($request->filled('data_inicio'), fn($q) => $q->whereDate('created_at', '>=', $request->data_inicio))
+                ->when($request->filled('data_fim'), fn($q) => $q->whereDate('created_at', '<=', $request->data_fim))
+                ->orderByDesc('created_at');
+
+            $perPage = min((int)$request->get('per_page', 50), 200);
+            return response()->json($query->paginate($perPage));
+        } catch (\Throwable $e) {
+            return response()->json([
+                'data' => [],
+                'total' => 0,
+            ]);
+        }
     }
 }

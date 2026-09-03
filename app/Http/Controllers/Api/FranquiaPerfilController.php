@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Concerns\HasTokenContext;
 use App\Http\Controllers\Controller;
 use App\Models\Franquia;
+use App\Services\AuditService;
 use App\Services\GeocodeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -89,6 +90,15 @@ class FranquiaPerfilController extends Controller
             }
         }
 
+        AuditService::log(
+            action: 'franquia.perfil_atualizado',
+            descricao: "Usuário {$request->user()?->name} ({$request->user()?->email}) atualizou os dados do perfil da franquia {$franquia->nome}",
+            franquiaId: $franquia->id,
+            entity: $franquia,
+            dadosNovos: $validated,
+            request: $request
+        );
+
         return response()->json([
             'message' => 'Perfil atualizado.',
             'data'    => $franquia->fresh(),
@@ -114,6 +124,14 @@ class FranquiaPerfilController extends Controller
         // Grava caminho relativo — URL computada no serve time
         $path = $request->file('logo')->store('franquias/logos', 'public');
         $franquia->update(['logo_url' => $path]);
+
+        AuditService::log(
+            action: 'franquia.logo_atualizado',
+            descricao: "Usuário {$request->user()?->name} alterou o logotipo da franquia {$franquia->nome}",
+            franquiaId: $franquia->id,
+            entity: $franquia,
+            request: $request
+        );
 
         return response()->json(['logo_url' => Storage::disk('public')->url($path)]);
     }
