@@ -396,10 +396,12 @@ class FranquiaCandidatoController extends Controller
         }
 
         if ($request->boolean('list')) {
+            $this->aplicarOrdenacaoStatus($query, $request->get('sort'), $request->get('dir'));
+
             // Paginado: a Unidade Matriz é dona de todas as vagas migradas, e
             // sem paginar esta rota carregava os 19 mil envios de uma vez.
             $perPage = min((int) $request->query('per_page', 20), 100);
-            $envios  = $query->orderByDesc('created_at')->paginate($perPage);
+            $envios  = $query->paginate($perPage);
 
             $data = $envios->getCollection()->map(fn($e) => [
                 'id'               => $e->id,
@@ -446,6 +448,51 @@ class FranquiaCandidatoController extends Controller
         }
 
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Ordena a listagem de Status Candidatos, inclusive por colunas de tabelas
+     * relacionadas, sem alterar o SELECT/WHERE principal — cada coluna
+     * relacionada usa uma subconsulta correlacionada (ORDER BY (SELECT ...)),
+     * mesmo padrão do AdminRelatorioProcessoController/CandidatoController.
+     */
+    private function aplicarOrdenacaoStatus($query, ?string $campo, ?string $direcao): void
+    {
+        $dir = $direcao === 'asc' ? 'asc' : 'desc';
+
+        $subconsultas = [
+            'candidato' => fn() => \Illuminate\Support\Facades\DB::table('candidatos')
+                ->join('users', 'users.id', '=', 'candidatos.user_id')
+                ->select('users.name')
+                ->whereColumn('candidatos.id', 'envios.candidato_id'),
+            'vaga' => fn() => \Illuminate\Support\Facades\DB::table('vagas')
+                ->select('titulo')
+                ->whereColumn('vagas.id', 'envios.vaga_id'),
+            'empresa' => fn() => \Illuminate\Support\Facades\DB::table('vagas')
+                ->join('empresas', 'empresas.id', '=', 'vagas.empresa_id')
+                ->select('empresas.razao_social')
+                ->whereColumn('vagas.id', 'envios.vaga_id'),
+            'franquia' => fn() => \Illuminate\Support\Facades\DB::table('candidatos')
+                ->join('franquias', 'franquias.id', '=', 'candidatos.franquia_id')
+                ->select('franquias.nome')
+                ->whereColumn('candidatos.id', 'envios.candidato_id'),
+        ];
+
+        $colunaDireta = [
+            'status'       => 'status',
+            'vinculado_em' => 'created_at',
+        ];
+
+        if ($campo && isset($subconsultas[$campo])) {
+            $query->orderBy($subconsultas[$campo](), $dir);
+        } elseif ($campo && isset($colunaDireta[$campo])) {
+            $query->orderBy($colunaDireta[$campo], $dir);
+        } else {
+            $query->orderBy('created_at', $dir);
+        }
+
+        // Critério de desempate estável quando a coluna ordenada tem repetidos.
+        $query->orderBy('id', $dir);
     }
 
     // GET /franquia/candidatos/pareceres

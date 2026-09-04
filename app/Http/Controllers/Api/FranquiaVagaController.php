@@ -49,6 +49,18 @@ class FranquiaVagaController extends Controller
     }
 
     /**
+     * Estado, bairro, CEP, rua e número somem quando qualquer uma das duas
+     * flags mandar esconder o endereço — a empresa escondendo da agência, ou
+     * quem cadastrou marcando a vaga como confidencial. Cidade fica de fora
+     * dessa: só a flag da empresa (ocultarEnderecoAgencia) pode escondê-la —
+     * confidencial deixa a cidade visível de propósito.
+     */
+    private function esconderCamposEndereco(Vaga $v, int $franquiaId): bool
+    {
+        return $this->ocultarEnderecoAgencia($v) || $this->esconderPorConfidencial($v, $franquiaId);
+    }
+
+    /**
      * Executa uma query de Vaga já filtrada por acesso (dono, ou dono+compartilhada
      * conforme o caso) e retorna o registro. Se não encontrar nada, diferencia:
      * - a vaga não existe de fato               -> 404 "Vaga não encontrada."
@@ -156,8 +168,8 @@ class FranquiaVagaController extends Controller
                 ? ['id' => null, 'razao_social' => 'Empresa confidencial']
                 : ['id' => $v->empresa_id, 'razao_social' => $v->empresa?->razao_social ?? $v->empresa?->nome_fantasia ?? 'Empresa não informada'],
             'cidade'            => $this->ocultarEnderecoAgencia($v) ? null : $v->cidade,
-            'estado'            => $this->ocultarEnderecoAgencia($v) ? null : $v->estado,
-            'bairro'            => ($this->ocultarEnderecoAgencia($v) || $this->esconderPorConfidencial($v, $franquiaId)) ? null : $v->bairro,
+            'estado'            => $this->esconderCamposEndereco($v, $franquiaId) ? null : $v->estado,
+            'bairro'            => $this->esconderCamposEndereco($v, $franquiaId) ? null : $v->bairro,
             'confidencial'      => (bool) $v->confidencial,
             'modalidade'        => $v->regime_trabalho,
             'tipo_contrato'     => $v->tipo_contrato,
@@ -376,12 +388,12 @@ class FranquiaVagaController extends Controller
             // confidencialidade marcada por quem cadastrou (Admin/Premium)
             'empresa'           => ($vaga->ocultar_empresa_agencia || $this->esconderPorConfidencial($vaga, $franquiaId)) ? null : $vaga->empresa,
             'cidade'            => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->cidade,
-            'estado'            => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->estado,
-            'bairro'            => ($this->ocultarEnderecoAgencia($vaga) || $this->esconderPorConfidencial($vaga, $franquiaId)) ? null : $vaga->bairro,
+            'estado'            => $this->esconderCamposEndereco($vaga, $franquiaId) ? null : $vaga->estado,
+            'bairro'            => $this->esconderCamposEndereco($vaga, $franquiaId) ? null : $vaga->bairro,
             'confidencial'      => (bool) $vaga->confidencial,
-            'cep'               => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->cep,
-            'logradouro'        => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->logradouro,
-            'numero'            => $this->ocultarEnderecoAgencia($vaga) ? null : $vaga->numero,
+            'cep'               => $this->esconderCamposEndereco($vaga, $franquiaId) ? null : $vaga->cep,
+            'logradouro'        => $this->esconderCamposEndereco($vaga, $franquiaId) ? null : $vaga->logradouro,
+            'numero'            => $this->esconderCamposEndereco($vaga, $franquiaId) ? null : $vaga->numero,
             'nivel_vaga_id'     => $vaga->nivel_vaga_id,
             'taxa_servico'      => $vaga->taxa_servico,
             'modalidade'        => $vaga->regime_trabalho,
