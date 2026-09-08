@@ -573,7 +573,11 @@ class FranquiaCandidatoController extends Controller
                 'cidade'          => $p->candidato->cidade,
                 'estado'          => $p->candidato->estado,
                 'bairro'          => $p->candidato->bairro,
-                'logradouro'      => $p->candidato->logradouro,
+                // `logradouro` é alias de `rua`; manda os dois para a tela não
+                // depender de qual nome o endpoint usou.
+                'logradouro'      => $p->candidato->rua,
+                'rua'             => $p->candidato->rua,
+                'numero'          => $p->candidato->numero,
             ] : null,
             'vaga'             => $p->vaga ? ['id' => $p->vaga_id, 'titulo' => $p->vaga->titulo] : null,
             'empresa_nome'     => $p->empresa?->razao_social ?? $p->empresa?->nome_fantasia ?? $p->vaga?->empresa?->razao_social ?? $p->vaga?->empresa?->nome_fantasia,
@@ -812,6 +816,9 @@ class FranquiaCandidatoController extends Controller
                 // Quem encaminhou — é por aqui que o envio volta para a tela de
                 // Status Candidatos de quem o registrou.
                 'franquia_id'  => $franquiaId,
+                // Operador dentro da unidade — o relatório usa para separar a
+                // produção do titular e dos assistentes.
+                'encaminhado_por' => $request->user()?->id,
             ]
         );
 

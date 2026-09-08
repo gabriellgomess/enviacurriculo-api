@@ -418,7 +418,14 @@ class CandidatoController extends Controller
             $envio = \App\Models\Envio::firstOrCreate(
                 ['candidato_id' => $candidato->id, 'vaga_id' => $vagaId],
                 // Encaminhado pela operação (agência), não candidatura espontânea
-                ['curriculo_id' => $curriculo?->id, 'status' => 'enviado', 'origem' => 'franquia']
+                [
+                    'curriculo_id' => $curriculo?->id,
+                    'status'       => 'enviado',
+                    'origem'       => 'franquia',
+                    // Operador que encaminhou — alimenta a coluna Usuário do
+                    // Relatório de Processos.
+                    'encaminhado_por' => $request->user()?->id,
+                ]
             );
             $vinculados[] = $vagaId;
         }

@@ -193,6 +193,8 @@ class CandidatoVagaController extends Controller
                 'mensagem'     => $request->mensagem,
                 // Candidatura espontânea pelo feed = canal plataforma
                 'origem'       => 'plataforma',
+                // `encaminhado_por` fica nulo de propósito: não houve operador.
+                // O relatório mostra "—" nessas linhas.
             ]);
 
             $saldoAntes = $c->creditos;

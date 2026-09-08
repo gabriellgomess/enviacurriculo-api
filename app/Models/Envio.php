@@ -12,6 +12,7 @@ class Envio extends Model
         'candidato_id',
         'vaga_id',
         'franquia_id',
+        'encaminhado_por',
         'curriculo_id',
         'mensagem',
         'status',
@@ -101,6 +102,15 @@ class Envio extends Model
     public function franquia()
     {
         return $this->belongsTo(Franquia::class);
+    }
+
+    /**
+     * Operador que encaminhou o candidato. Com o módulo multiusuário, a unidade
+     * sozinha não identifica quem produziu o encaminhamento.
+     */
+    public function encaminhador()
+    {
+        return $this->belongsTo(User::class, 'encaminhado_por');
     }
 
     public function curriculo()

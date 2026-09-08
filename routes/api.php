@@ -227,6 +227,8 @@ Route::middleware('auth:sanctum')->group(function () {
         // Empresas
         // Relatório de Processos — candidatos vinculados a vagas
         Route::get('relatorios/processos', [\App\Http\Controllers\Api\AdminRelatorioProcessoController::class, 'index']);
+        // Opções do filtro por usuário — quem tem encaminhamento registrado
+        Route::get('relatorios/processos/usuarios', [\App\Http\Controllers\Api\AdminRelatorioProcessoController::class, 'usuarios']);
 
         Route::get('empresas/relatorios',          [EmpresaController::class, 'relatorios']);
         Route::get('empresas/niveis-vagas',        [EmpresaController::class, 'niveisVagas']);
@@ -620,6 +622,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('relatorios', [FranquiaRelatorioController::class, 'index']);
         // Relatório de Processos — escopo por tipo (premium/start) no controller
         Route::get('relatorios/processos', [\App\Http\Controllers\Api\FranquiaRelatorioProcessoController::class, 'index']);
+        // Opções do filtro por usuário — restrito aos usuários da própria unidade
+        Route::get('relatorios/processos/usuarios', [\App\Http\Controllers\Api\FranquiaRelatorioProcessoController::class, 'usuarios']);
         Route::get('relatorios-gerenciais/{tipo}', [\App\Http\Controllers\Api\FranquiaRelatorioGerencialController::class, 'show']);
 
         // Vagas

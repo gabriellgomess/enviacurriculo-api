@@ -54,11 +54,24 @@ class FranquiaRelatorioProcessoController extends Controller
             'candidato:id,user_id,cidade,estado',
             'candidato.user:id,name',
             'franquia:id,nome,codigo',
+            'encaminhador:id,name',
             'vaga:id,titulo,codigo,empresa_id',
             'vaga.empresa:id,razao_social,nome_fantasia',
         ]);
 
         $this->aplicarEscopo($query, $franquiaId, $isPremium);
+
+        // Filtro por usuário — sempre dentro da própria unidade. O premium vê
+        // linhas de outras franquias (as que caíram nas empresas e vagas dela),
+        // e o `where` na unidade impede que ele use este filtro para vasculhar
+        // a equipe alheia.
+        if ($request->filled('usuario_id')) {
+            $query->where('franquia_id', $franquiaId);
+
+            $request->usuario_id === 'sem'
+                ? $query->whereNull('encaminhado_por')
+                : $query->where('encaminhado_por', $request->usuario_id);
+        }
 
         if ($request->filled('empresa_id')) {
             $query->whereHas('vaga', fn($v) => $v->where('empresa_id', $request->empresa_id));
@@ -109,6 +122,12 @@ class FranquiaRelatorioProcessoController extends Controller
         $itens = $envios->getCollection()->map(fn($e) => [
             'id'              => $e->id,
             'franquia'        => $e->franquia?->nome ?? 'Administração',
+            // Só identifica o operador quando o envio é da própria unidade. Nas
+            // linhas que vieram de outra franquia, a coluna Franquia já diz a
+            // origem — o nome de quem trabalha lá não é assunto desta unidade.
+            // O cast é necessário: `franquia_id` não está em $casts e o driver
+            // pode devolver string, o que faria o === falhar sempre.
+            'usuario'         => (int) $e->franquia_id === $franquiaId ? $e->encaminhador?->name : null,
             'candidato'       => $e->candidato?->user?->name ?? '—',
             'candidato_local' => trim(implode('/', array_filter([$e->candidato?->cidade, $e->candidato?->estado]))) ?: null,
             'vaga'            => $e->vaga?->titulo ?? '—',
@@ -138,6 +157,26 @@ class FranquiaRelatorioProcessoController extends Controller
                 'tipo'         => $isPremium ? 'premium' : 'start',
             ],
         ]);
+    }
+
+    /**
+     * Usuários da própria unidade que têm encaminhamento registrado.
+     *
+     * GET /franquia/relatorios/processos/usuarios
+     */
+    public function usuarios(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+
+        $usuarios = DB::table('envios')
+            ->join('users', 'users.id', '=', 'envios.encaminhado_por')
+            ->where('envios.franquia_id', $franquiaId)
+            ->select('users.id', 'users.name')
+            ->distinct()
+            ->orderBy('users.name')
+            ->get();
+
+        return response()->json(['data' => $usuarios]);
     }
 
     /** Restringe o relatório ao que a franquia tem direito de ver. */
@@ -171,6 +210,9 @@ class FranquiaRelatorioProcessoController extends Controller
             'franquia' => fn() => DB::table('franquias')
                 ->select('nome')
                 ->whereColumn('franquias.id', 'envios.franquia_id'),
+            'usuario' => fn() => DB::table('users')
+                ->select('name')
+                ->whereColumn('users.id', 'envios.encaminhado_por'),
             'candidato' => fn() => DB::table('candidatos')
                 ->join('users', 'users.id', '=', 'candidatos.user_id')
                 ->select('users.name')

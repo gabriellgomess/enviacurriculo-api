@@ -27,6 +27,7 @@ class AdminRelatorioProcessoController extends Controller
             'candidato:id,user_id,cidade,estado',
             'candidato.user:id,name',
             'franquia:id,nome,codigo',
+            'encaminhador:id,name',
             'vaga:id,titulo,codigo,empresa_id',
             'vaga.empresa:id,razao_social,nome_fantasia',
         ]);
@@ -36,6 +37,15 @@ class AdminRelatorioProcessoController extends Controller
             $request->franquia_id === 'sem'
                 ? $query->whereNull('franquia_id')
                 : $query->where('franquia_id', $request->franquia_id);
+        }
+
+        // Usuário que encaminhou. Com o módulo multiusuário, a unidade sozinha
+        // não separa a produção do titular e a dos assistentes.
+        if ($request->filled('usuario_id')) {
+            // 'sem' = candidatura espontânea, sem operador
+            $request->usuario_id === 'sem'
+                ? $query->whereNull('encaminhado_por')
+                : $query->where('encaminhado_por', $request->usuario_id);
         }
 
         if ($request->filled('empresa_id')) {
@@ -91,6 +101,7 @@ class AdminRelatorioProcessoController extends Controller
         $itens = $envios->getCollection()->map(fn($e) => [
             'id'              => $e->id,
             'franquia'        => $e->franquia?->nome ?? 'Administração',
+            'usuario'         => $e->encaminhador?->name,
             'candidato'       => $e->candidato?->user?->name ?? '—',
             'candidato_local' => trim(implode('/', array_filter([$e->candidato?->cidade, $e->candidato?->estado]))) ?: null,
             'vaga'            => $e->vaga?->titulo ?? '—',
@@ -122,6 +133,31 @@ class AdminRelatorioProcessoController extends Controller
     }
 
     /**
+     * Usuários que aparecem como responsáveis por algum encaminhamento.
+     *
+     * GET /admin/relatorios/processos/usuarios[?franquia_id=]
+     *
+     * Sai de `envios`, e não da lista de usuários da franquia, por dois
+     * motivos: o filtro só oferece quem de fato tem produção, e continua
+     * listando quem saiu da unidade mas deixou histórico.
+     */
+    public function usuarios(Request $request)
+    {
+        $usuarios = DB::table('envios')
+            ->join('users', 'users.id', '=', 'envios.encaminhado_por')
+            ->when($request->filled('franquia_id') && $request->franquia_id !== 'sem',
+                fn($q) => $q->where('envios.franquia_id', $request->franquia_id))
+            ->when($request->franquia_id === 'sem',
+                fn($q) => $q->whereNull('envios.franquia_id'))
+            ->select('users.id', 'users.name')
+            ->distinct()
+            ->orderBy('users.name')
+            ->get();
+
+        return response()->json(['data' => $usuarios]);
+    }
+
+    /**
      * Ordena por qualquer coluna, inclusive as de tabelas relacionadas, sem
      * alterar o SELECT/WHERE principal da consulta — cada coluna relacionada
      * usa uma subconsulta correlacionada (ORDER BY (SELECT ...)), em vez de
@@ -135,6 +171,9 @@ class AdminRelatorioProcessoController extends Controller
             'franquia' => fn() => DB::table('franquias')
                 ->select('nome')
                 ->whereColumn('franquias.id', 'envios.franquia_id'),
+            'usuario' => fn() => DB::table('users')
+                ->select('name')
+                ->whereColumn('users.id', 'envios.encaminhado_por'),
             'candidato' => fn() => DB::table('candidatos')
                 ->join('users', 'users.id', '=', 'candidatos.user_id')
                 ->select('users.name')

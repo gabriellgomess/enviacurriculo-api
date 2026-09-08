@@ -575,6 +575,9 @@ class FranquiaVagaController extends Controller
                 // quem o fez: a tela parte de envios.franquia_id, e a vaga pode
                 // ser da Matriz ou de outra franquia que convidou esta.
                 'franquia_id'  => $franquiaId,
+                // Operador dentro da unidade — o relatório usa para separar a
+                // produção do titular e dos assistentes.
+                'encaminhado_por' => $request->user()?->id,
             ]
         );
 
