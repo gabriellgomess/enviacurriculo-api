@@ -599,7 +599,7 @@ class FranquiaVagaController extends Controller
         // Visualização dos candidatos vinculados liberada para todas as franquias
         $vaga = $this->vagaOuAbortar(Vaga::query(), $vagaId);
 
-        $envios = Envio::with('candidato.user:id,name')
+        $envios = Envio::with(['candidato.user:id,name', 'franquia:id,nome'])
             ->where('vaga_id', $vaga->id)
             ->orderByDesc('created_at')
             ->get();
@@ -608,7 +608,9 @@ class FranquiaVagaController extends Controller
             'id'           => $e->id,
             'candidato_id' => $e->candidato_id,
             'nome'         => $e->candidato?->user?->name,
-            'franquia'     => null,
+            // Quem encaminhou o candidato para esta vaga. Candidatura
+            // espontânea pelo feed não tem franquia e sai como "—" na tela.
+            'franquia'     => $e->franquia?->nome,
             'status'       => $e->status,
             'vaga_id'      => $vaga->id,
             'vinculado_em' => $e->created_at,
