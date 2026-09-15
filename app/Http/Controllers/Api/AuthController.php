@@ -181,7 +181,13 @@ class AuthController extends Controller
             return response()->json(['message' => 'Contexto inválido.'], 403);
         }
 
-        return $this->issueToken($user, $request->role, $contexto, true);
+        // Impersonar é ver exatamente o que aquele contexto vê: o token não
+        // carrega a ability is_admin, então as mesmas regras de tipo/dono que
+        // valem pra franquia valem aqui. Sem isso, um admin "vendo como" uma
+        // franquia Start ainda tinha bypass de admin em toda checagem de
+        // permissão do front (editar vaga de outra franquia, gerenciar
+        // empresas, etc.) — o oposto do que impersonar deveria simular.
+        return $this->issueToken($user, $request->role, $contexto, false);
     }
 
     public function logout(Request $request)
