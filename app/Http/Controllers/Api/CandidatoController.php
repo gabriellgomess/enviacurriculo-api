@@ -438,7 +438,12 @@ class CandidatoController extends Controller
 
     public function vinculacoes(Request $request, Candidato $candidato)
     {
-        $envios = \App\Models\Envio::with(['vaga:id,titulo,empresa_id', 'vaga.empresa:id,nome_fantasia,razao_social'])
+        $envios = \App\Models\Envio::with([
+                'vaga:id,titulo,empresa_id',
+                'vaga.empresa:id,nome_fantasia,razao_social',
+                'franquia:id,nome',
+                'encaminhador:id,name',
+            ])
             ->where('candidato_id', $candidato->id)
             ->orderByDesc('created_at')
             ->get()
@@ -447,6 +452,10 @@ class CandidatoController extends Controller
                     'id' => $envio->id,
                     'vaga_nome' => $envio->vaga?->titulo ?? 'Vaga Desconhecida',
                     'empresa_nome' => $envio->vaga?->empresa?->nome_fantasia ?? $envio->vaga?->empresa?->razao_social ?? 'Empresa Desconhecida',
+                    // Quem encaminhou: a unidade e, quando houver, o operador.
+                    // O painel da franquia já mostrava isso; o do admin não.
+                    'franquia_nome' => $envio->franquia?->nome,
+                    'usuario_nome' => $envio->encaminhador?->name,
                     'status' => $envio->status,
                     'created_at' => $envio->created_at,
                 ];
