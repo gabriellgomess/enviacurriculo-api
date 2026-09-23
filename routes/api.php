@@ -209,6 +209,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('franquias', FranquiaController::class);
         Route::patch('franquias/{franquia}/toggle-active', [FranquiaController::class, 'toggleActive']);
 
+        // Convite em massa de vagas (libera "Vincular Candidato" nas vagas de outras franquias)
+        Route::get('franquias/{franquia}/convites-vagas',             [FranquiaController::class, 'resumoConvitesVagas']);
+        Route::post('franquias/{franquia}/convites-vagas/convidar',   [FranquiaController::class, 'convidarVagasEmMassa']);
+        Route::post('franquias/{franquia}/convites-vagas/desconvidar',[FranquiaController::class, 'desconvidarVagasEmMassa']);
+
         // Documentos das franquias
         Route::get('franquias/{franquia}/documentos', [FranquiaDocumentoController::class, 'index']);
         Route::post('franquias/{franquia}/documentos', [FranquiaDocumentoController::class, 'store']);
@@ -641,6 +646,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('vagas/{vagaId}/documentos/{docId}', [FranquiaVagaController::class, 'destroyDocumento']);
         Route::get('vagas/{id}/compartilhar',            [FranquiaVagaController::class, 'listCompartilhadas']);
         Route::post('vagas/{id}/compartilhar',           [FranquiaVagaController::class, 'compartilhar']);
+        // Convite em massa (Premium, sobre as próprias vagas)
+        Route::get('vagas/convite-massa/resumo',         [FranquiaVagaController::class, 'resumoConviteMassa']);
+        Route::post('vagas/convite-massa/convidar',      [FranquiaVagaController::class, 'convidarMassa']);
+        Route::post('vagas/convite-massa/desconvidar',   [FranquiaVagaController::class, 'desconvidarMassa']);
 
         // Candidatos — rotas estáticas ANTES das dinâmicas com {id}
         Route::get('candidatos/status',                  [FranquiaCandidatoController::class, 'status']);

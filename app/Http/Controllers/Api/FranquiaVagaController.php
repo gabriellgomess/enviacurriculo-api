@@ -11,6 +11,7 @@ use App\Models\Franquia;
 use App\Models\Vaga;
 use App\Models\VagaDocumento;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class FranquiaVagaController extends Controller
@@ -698,5 +699,110 @@ class FranquiaVagaController extends Controller
         $vaga->franquiasCompartilhadas()->sync($request->franquia_ids);
 
         return response()->json(['message' => 'Vaga compartilhada com sucesso.']);
+    }
+
+    /**
+     * Convite em massa: a mesma ideia do "Convidar Franquias" por vaga, só
+     * que aplicada de uma vez a todo o acervo da própria unidade — o caminho
+     * pra liberar tudo pra uma franquia nova de uma vez, sem repetir vaga a
+     * vaga. Só sobre vagas que a Premium é dona; a franquia alvo nunca é a
+     * própria (não faz sentido convidar a si mesma).
+     */
+    private function franquiaAlvo(Request $request, int $franquiaId): int
+    {
+        $request->validate([
+            'franquia_id' => 'required|integer|exists:franquias,id',
+            'status'      => 'nullable|in:rascunho,publicada,pausada,fechada',
+        ]);
+
+        if ((int) $request->franquia_id === $franquiaId) {
+            abort(response()->json(['message' => 'Selecione outra franquia — esta já é a dona das vagas.'], 422));
+        }
+
+        return (int) $request->franquia_id;
+    }
+
+    // GET /franquia/vagas/convite-massa/resumo
+    public function resumoConviteMassa(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $this->assertPremium($franquiaId, 'Apenas franquias Premium podem convidar franquias em massa.');
+
+        $request->validate([
+            'franquia_id' => 'required|integer|exists:franquias,id',
+        ]);
+        $alvoId = (int) $request->franquia_id;
+
+        $minhasVagas = Vaga::where('franquia_id', $franquiaId);
+
+        $porStatus = (clone $minhasVagas)
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $convidadas = DB::table('vaga_franquia_compartilhada')
+            ->where('franquia_id', $alvoId)
+            ->whereIn('vaga_id', (clone $minhasVagas)->pluck('id'))
+            ->count();
+
+        return response()->json([
+            'total_elegiveis' => (clone $minhasVagas)->count(),
+            'convidadas'      => $convidadas,
+            'por_status'      => $porStatus,
+        ]);
+    }
+
+    // POST /franquia/vagas/convite-massa/convidar
+    public function convidarMassa(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $this->assertPremium($franquiaId, 'Apenas franquias Premium podem convidar franquias em massa.');
+        $alvoId = $this->franquiaAlvo($request, $franquiaId);
+
+        $vagasQuery = Vaga::where('franquia_id', $franquiaId);
+        if ($request->filled('status')) {
+            $vagasQuery->where('status', $request->status);
+        }
+        $vagaIds = $vagasQuery->pluck('id');
+
+        $agora  = now();
+        $linhas = $vagaIds->map(fn ($vagaId) => [
+            'vaga_id'     => $vagaId,
+            'franquia_id' => $alvoId,
+            'created_at'  => $agora,
+            'updated_at'  => $agora,
+        ]);
+
+        foreach ($linhas->chunk(500) as $lote) {
+            DB::table('vaga_franquia_compartilhada')->insertOrIgnore($lote->all());
+        }
+
+        return response()->json([
+            'message' => 'Franquia convidada para as vagas selecionadas.',
+            'total'   => $vagaIds->count(),
+        ]);
+    }
+
+    // POST /franquia/vagas/convite-massa/desconvidar
+    public function desconvidarMassa(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+        $this->assertPremium($franquiaId, 'Apenas franquias Premium podem desconvidar franquias em massa.');
+        $alvoId = $this->franquiaAlvo($request, $franquiaId);
+
+        $minhasVagaIds = Vaga::where('franquia_id', $franquiaId);
+        if ($request->filled('status')) {
+            $minhasVagaIds->where('status', $request->status);
+        }
+
+        $removidos = DB::table('vaga_franquia_compartilhada')
+            ->where('franquia_id', $alvoId)
+            ->whereIn('vaga_id', $minhasVagaIds->pluck('id'))
+            ->delete();
+
+        return response()->json([
+            'message' => 'Convites removidos.',
+            'total'   => $removidos,
+        ]);
     }
 }

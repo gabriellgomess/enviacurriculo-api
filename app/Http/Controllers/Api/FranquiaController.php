@@ -8,6 +8,7 @@ use App\Models\FranquiaUsuario;
 use App\Models\User;
 use App\Models\UserContext;
 use App\Models\UserRole;
+use App\Models\Vaga;
 use App\Services\AuditService;
 use App\Services\GeocodeService;
 use Illuminate\Http\Request;
@@ -439,6 +440,91 @@ class FranquiaController extends Controller
                 'start'   => $porTipo->get('start', 0),
             ],
             'por_estado' => $porEstado,
+        ]);
+    }
+
+    // GET /admin/franquias/{franquia}/convites-vagas
+    //
+    // Resumo pra alimentar o modal de convite em massa: quantas vagas de
+    // outras franquias existem (a dona nunca precisa de convite pra própria
+    // vaga) e quantas dessas já convidaram esta franquia, com quebra por
+    // status pra dar contexto ao filtro opcional.
+    public function resumoConvitesVagas(Franquia $franquia)
+    {
+        $elegiveis = Vaga::where('franquia_id', '!=', $franquia->id);
+
+        $porStatus = (clone $elegiveis)
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $convidadas = DB::table('vaga_franquia_compartilhada')
+            ->where('franquia_id', $franquia->id)
+            ->count();
+
+        return response()->json([
+            'total_elegiveis' => (clone $elegiveis)->count(),
+            'convidadas'      => $convidadas,
+            'por_status'      => $porStatus,
+        ]);
+    }
+
+    // POST /admin/franquias/{franquia}/convites-vagas/convidar
+    //
+    // Mesma lógica do comando ec:convidar-franquias-vagas, mas para uma
+    // franquia só — pensado pra liberar o acervo inteiro (ou um recorte por
+    // status) assim que uma franquia nova começa.
+    public function convidarVagasEmMassa(Request $request, Franquia $franquia)
+    {
+        $request->validate([
+            'status' => 'nullable|in:rascunho,publicada,pausada,fechada',
+        ]);
+
+        $vagasQuery = Vaga::where('franquia_id', '!=', $franquia->id);
+        if ($request->filled('status')) {
+            $vagasQuery->where('status', $request->status);
+        }
+        $vagaIds = $vagasQuery->pluck('id');
+
+        $agora  = now();
+        $linhas = $vagaIds->map(fn ($vagaId) => [
+            'vaga_id'     => $vagaId,
+            'franquia_id' => $franquia->id,
+            'created_at'  => $agora,
+            'updated_at'  => $agora,
+        ]);
+
+        // Em lotes: um insert único com dezenas de milhares de linhas estoura
+        // o limite de placeholders do driver. insertOrIgnore pula quem já
+        // está convidado, sem duplicar (unique vaga_id+franquia_id).
+        foreach ($linhas->chunk(500) as $lote) {
+            DB::table('vaga_franquia_compartilhada')->insertOrIgnore($lote->all());
+        }
+
+        return response()->json([
+            'message' => 'Franquia convidada para as vagas selecionadas.',
+            'total'   => $vagaIds->count(),
+        ]);
+    }
+
+    // POST /admin/franquias/{franquia}/convites-vagas/desconvidar
+    public function desconvidarVagasEmMassa(Request $request, Franquia $franquia)
+    {
+        $request->validate([
+            'status' => 'nullable|in:rascunho,publicada,pausada,fechada',
+        ]);
+
+        $query = DB::table('vaga_franquia_compartilhada')->where('franquia_id', $franquia->id);
+
+        if ($request->filled('status')) {
+            $query->whereIn('vaga_id', Vaga::where('status', $request->status)->pluck('id'));
+        }
+
+        $removidos = $query->delete();
+
+        return response()->json([
+            'message' => 'Convites removidos.',
+            'total'   => $removidos,
         ]);
     }
 }
