@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\DeletesOrphanUser;
 use App\Http\Controllers\Controller;
 use App\Models\Franquia;
 use App\Models\FranquiaUsuario;
@@ -17,6 +18,8 @@ use Illuminate\Support\Facades\Hash;
 
 class FranquiaController extends Controller
 {
+    use DeletesOrphanUser;
+
     public function __construct(private GeocodeService $geocode) {}
 
     public function index(Request $request)
@@ -351,28 +354,30 @@ class FranquiaController extends Controller
 
     public function destroy(Request $request, Franquia $franquia)
     {
-        $userIds = UserContext::where('role', 'franquia')
-            ->where('context_id', $franquia->id)
-            ->pluck('user_id');
+        DB::transaction(function () use ($request, $franquia) {
+            $userIds = UserContext::where('role', 'franquia')
+                ->where('context_id', $franquia->id)
+                ->pluck('user_id');
 
-        FranquiaUsuario::where('franquia_id', $franquia->id)->delete();
-        UserContext::where('role', 'franquia')->where('context_id', $franquia->id)->delete();
+            FranquiaUsuario::where('franquia_id', $franquia->id)->delete();
+            UserContext::where('role', 'franquia')->where('context_id', $franquia->id)->delete();
 
-        foreach ($userIds as $uid) {
-            if (!UserContext::where('user_id', $uid)->exists()) {
-                UserRole::where('user_id', $uid)->delete();
-                User::where('id', $uid)->delete();
+            foreach ($userIds as $uid) {
+                UserRole::where('user_id', $uid)->where('role', 'franquia')->delete();
+                $this->excluirUsuarioOrfao($uid);
             }
-        }
 
-        AuditService::log(
-            action: 'franquia.removida',
-            descricao: "Admin {$request->user()?->name} removeu a franquia {$franquia->nome} ({$franquia->codigo})",
-            franquiaId: $franquia->id,
-            request: $request
-        );
+            AuditService::log(
+                action: 'franquia.removida',
+                descricao: "Admin {$request->user()?->name} removeu a franquia {$franquia->nome} ({$franquia->codigo})",
+                franquiaId: $franquia->id,
+                request: $request
+            );
 
-        $franquia->delete();
+            // forceDelete: soft delete deixaria cnpj/codigo presos, e o cliente
+            // não consegue recadastrar a mesma franquia depois de excluí-la.
+            $franquia->forceDelete();
+        });
 
         return response()->json(['message' => 'Franquia removida com sucesso.']);
     }

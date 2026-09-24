@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\DeletesOrphanUser;
 use App\Http\Controllers\Controller;
 use App\Models\Parceiro;
 use App\Models\User;
@@ -14,6 +15,8 @@ use Illuminate\Validation\Rule;
 
 class AdminParceiroController extends Controller
 {
+    use DeletesOrphanUser;
+
     public function index(Request $request)
     {
         $query = Parceiro::with('user:id,name,email');
@@ -175,7 +178,18 @@ class AdminParceiroController extends Controller
 
     public function destroy(Parceiro $parceiro)
     {
-        $parceiro->delete();
+        DB::transaction(function () use ($parceiro) {
+            $userId = $parceiro->user_id;
+
+            UserContext::where('role', 'parceiro')->where('context_id', $parceiro->id)->delete();
+            UserRole::where('user_id', $userId)->where('role', 'parceiro')->delete();
+            $this->excluirUsuarioOrfao($userId);
+
+            // forceDelete: soft delete deixaria o cnpj preso, e o cliente não
+            // consegue recadastrar o mesmo parceiro depois de excluí-lo.
+            $parceiro->forceDelete();
+        });
+
         return response()->json(['message' => 'Parceiro removido.']);
     }
 

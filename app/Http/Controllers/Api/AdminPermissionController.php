@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\DeletesOrphanUser;
 use App\Http\Controllers\Controller;
 use App\Models\AdminPermission;
 use App\Models\User;
@@ -14,6 +15,8 @@ const EXTRA_PANELS = ['empresa', 'franquia', 'candidato', 'parceiro'];
 
 class AdminPermissionController extends Controller
 {
+    use DeletesOrphanUser;
+
     public function index()
     {
         $admins = User::whereHas('roles', fn($q) => $q->where('role', 'admin'))
@@ -112,7 +115,15 @@ class AdminPermissionController extends Controller
             return response()->json(['message' => 'Você não pode remover sua própria conta.'], 403);
         }
 
-        $user->delete();
+        DB::transaction(function () use ($user) {
+            UserRole::where('user_id', $user->id)->where('role', 'admin')->delete();
+            AdminPermission::where('user_id', $user->id)->delete();
+
+            // Só apaga de verdade (e libera o e-mail) se não sobrar nenhum
+            // papel extra (paineis_acesso) nem vínculo com franquia/parceiro/
+            // candidato — senão a conta ainda é usada por outro painel.
+            $this->excluirUsuarioOrfao($user->id);
+        });
 
         return response()->json(['message' => 'Administrador removido com sucesso.']);
     }

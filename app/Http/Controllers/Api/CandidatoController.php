@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\DeletesOrphanUser;
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
 use App\Models\CandidatoDocumento;
@@ -16,6 +17,8 @@ use Illuminate\Support\Str;
 
 class CandidatoController extends Controller
 {
+    use DeletesOrphanUser;
+
     public function index(Request $request)
     {
         $query = Candidato::with('user:id,name,email,phone,active');
@@ -286,7 +289,18 @@ class CandidatoController extends Controller
 
     public function destroy(Candidato $candidato)
     {
-        $candidato->delete();
+        DB::transaction(function () use ($candidato) {
+            $userId = $candidato->user_id;
+
+            UserContext::where('role', 'candidato')->where('context_id', $candidato->id)->delete();
+            UserRole::where('user_id', $userId)->where('role', 'candidato')->delete();
+            $this->excluirUsuarioOrfao($userId);
+
+            // forceDelete: soft delete deixaria o cpf preso, e o cliente não
+            // consegue recadastrar o mesmo candidato depois de excluí-lo.
+            $candidato->forceDelete();
+        });
+
         return response()->json(['message' => 'Candidato removido com sucesso.']);
     }
 
