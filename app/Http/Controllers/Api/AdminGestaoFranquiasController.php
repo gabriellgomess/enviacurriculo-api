@@ -214,9 +214,7 @@ class AdminGestaoFranquiasController extends Controller
         $mes = $request->query('mes', now()->format('Y-m')); // YYYY-MM
 
         $rows = DB::table('envios as e')
-            ->join('vagas as v', 'v.id', '=', 'e.vaga_id')
-            ->join('franquias as f', 'f.id', '=', 'v.franquia_id')
-            ->whereNotNull('v.franquia_id')
+            ->join('franquias as f', 'f.id', '=', 'e.franquia_id')
             ->where(DB::raw("DATE_FORMAT(e.created_at, '%Y-%m')"), $mes)
             ->groupBy('f.id', 'f.nome', 'f.codigo', DB::raw('DATE(e.created_at)'))
             ->select('f.id as franquia_id', 'f.nome', 'f.codigo',
