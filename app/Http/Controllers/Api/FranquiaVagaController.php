@@ -62,6 +62,35 @@ class FranquiaVagaController extends Controller
         return $this->ocultarEnderecoAgencia($v) || $this->esconderPorConfidencial($v, $franquiaId);
     }
 
+    /*
+     * As três restrições abaixo são o espelho em SQL das regras de ocultação
+     * acima. Servem para os filtros da listagem: o que a franquia não vê no
+     * card também não pode ser encontrado filtrando.
+     */
+
+    /** Espelho de esconderPorConfidencial(): fica só o que não é sigiloso para esta franquia. */
+    private function somenteNaoConfidencialParaOutros($query, int $franquiaId): void
+    {
+        $query->where(fn($w) => $w
+            ->where('confidencial', false)
+            ->orWhere('franquia_id', $franquiaId));
+    }
+
+    /** Espelho de ocultarEnderecoAgencia(). */
+    private function somenteEnderecoNaoOcultoPelaEmpresa($query): void
+    {
+        $query->where(fn($w) => $w
+            ->where('ocultar_endereco_agencia', false)
+            ->orWhereNotIn('canal', ['agencia', 'ambos']));
+    }
+
+    /** Vagas em que o card mostra a empresa de verdade (não "Empresa confidencial"). */
+    private function somenteEmpresaVisivel($query, int $franquiaId): void
+    {
+        $query->where('ocultar_empresa_agencia', false);
+        $this->somenteNaoConfidencialParaOutros($query, $franquiaId);
+    }
+
     /**
      * Executa uma query de Vaga já filtrada por acesso (dono, ou dono+compartilhada
      * conforme o caso) e retorna o registro. Se não encontrar nada, diferencia:
@@ -130,6 +159,21 @@ class FranquiaVagaController extends Controller
         $this->filtrarPorLista($query, $request, 'turno', 'turno');
         if ($request->boolean('sem_candidato')) {
             $query->whereDoesntHave('envios');
+        }
+
+        // Filtrar por um dado que o card esconde revelaria esse dado por
+        // tentativa (ex.: escolher a empresa e ver a vaga sigilosa aparecer).
+        // Então, quando o filtro é usado, as vagas que escondem aquele campo
+        // desta franquia ficam de fora do resultado.
+        if ($request->filled('empresa_id')) {
+            $this->somenteEmpresaVisivel($query, $franquiaId);
+        }
+        if ($request->filled('cidade')) {
+            $this->somenteEnderecoNaoOcultoPelaEmpresa($query);
+        }
+        if ($request->filled('bairro') || $request->filled('estado')) {
+            $this->somenteEnderecoNaoOcultoPelaEmpresa($query);
+            $this->somenteNaoConfidencialParaOutros($query, $franquiaId);
         }
 
         // Ordenação: padrão pela última atualização (mais recente primeiro)
@@ -208,19 +252,17 @@ class FranquiaVagaController extends Controller
 
         // Mesmas regras de ocultação da listagem: um bairro ou cidade que a
         // franquia não pode ver no card também não aparece como opção.
-        $semEnderecoOcultoPelaEmpresa = fn($q) => $q->where(fn($w) => $w
-            ->where('ocultar_endereco_agencia', false)
-            ->orWhereNotIn('canal', ['agencia', 'ambos']));
+        $cidades = Vaga::query();
+        $this->somenteEnderecoNaoOcultoPelaEmpresa($cidades);
+
+        $bairros = Vaga::query();
+        $this->somenteEnderecoNaoOcultoPelaEmpresa($bairros);
+        $this->somenteNaoConfidencialParaOutros($bairros, $franquiaId);
 
         return response()->json(['data' => [
             'titulos' => $this->opcoesDistintas(Vaga::query(), 'titulo'),
-            'cidades' => $this->opcoesDistintas($semEnderecoOcultoPelaEmpresa(Vaga::query()), 'cidade'),
-            'bairros' => $this->opcoesDistintas(
-                $semEnderecoOcultoPelaEmpresa(Vaga::query())->where(fn($w) => $w
-                    ->where('confidencial', false)
-                    ->orWhere('franquia_id', $franquiaId)),
-                'bairro'
-            ),
+            'cidades' => $this->opcoesDistintas($cidades, 'cidade'),
+            'bairros' => $this->opcoesDistintas($bairros, 'bairro'),
         ]]);
     }
 
