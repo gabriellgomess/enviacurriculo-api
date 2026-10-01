@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\ListagemVagas;
 use App\Http\Controllers\Controller;
+use App\Models\Empresa;
 use App\Models\Vaga;
 use Illuminate\Http\Request;
 
@@ -113,6 +114,7 @@ class VagaController extends Controller
             'bairro'          => 'nullable|string|max:100',
             'quantidade_vagas'=> 'nullable|integer|min:1',
             'status'          => 'nullable|in:rascunho,publicada,pausada,fechada',
+            'canal'           => 'nullable|in:agencia,plataforma,ambos',
             'requer_validacao_premium' => 'nullable|boolean',
             'data_abertura'   => 'nullable|date',
             'data_fechamento' => 'nullable|date|after_or_equal:data_abertura',
@@ -136,6 +138,13 @@ class VagaController extends Controller
 
         $validated['codigo']  = $this->gerarCodigo();
         $validated['status']  = $validated['status'] ?? 'rascunho';
+
+        // Sem canal informado, a vaga segue o produto da empresa. Deixar em
+        // branco caía no default da coluna ('plataforma') e a vaga de uma
+        // empresa de agência saía com o nome exposto ao candidato.
+        $validated['canal'] ??= Empresa::find($validated['empresa_id'])?->tipo_acesso === 'plataforma'
+            ? 'plataforma'
+            : 'agencia';
 
         $vaga = Vaga::create($validated);
 
@@ -216,6 +225,8 @@ class VagaController extends Controller
             'bairro'          => 'nullable|string|max:100',
             'quantidade_vagas'=> 'nullable|integer|min:1',
             'status'          => 'nullable|in:rascunho,publicada,pausada,fechada,cancelada,aberta,em_andamento',
+            // `sometimes`: quem não envia o campo não mexe no canal já gravado.
+            'canal'           => 'sometimes|in:agencia,plataforma,ambos',
             'requer_validacao_premium' => 'nullable|boolean',
             'data_abertura'   => 'nullable|date',
             'data_fechamento' => 'nullable|date|after_or_equal:data_abertura',
