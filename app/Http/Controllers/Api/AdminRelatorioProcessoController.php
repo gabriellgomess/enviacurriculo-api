@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Empresa;
 use App\Models\Envio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -50,6 +51,15 @@ class AdminRelatorioProcessoController extends Controller
 
         if ($request->filled('empresa_id')) {
             $query->whereHas('vaga', fn($v) => $v->where('empresa_id', $request->empresa_id));
+        }
+
+        // Unidade Premium responsável pela empresa — não é quem encaminhou
+        // (isso é `franquia_id`), é quem cuida da empresa que recebeu a vaga.
+        // Mesmo critério usado no escopo do relatório da própria franquia
+        // premium (FranquiaRelatorioProcessoController::aplicarEscopo).
+        if ($request->filled('unidade_premium_id')) {
+            $empresaIds = Empresa::where('franquia_id', $request->unidade_premium_id)->pluck('id');
+            $query->whereHas('vaga', fn($v) => $v->whereIn('empresa_id', $empresaIds));
         }
 
         if ($request->filled('status')) {
