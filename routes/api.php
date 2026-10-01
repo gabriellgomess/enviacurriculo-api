@@ -260,6 +260,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('empresas/{empresa}/beneficios', [EmpresaController::class, 'syncBeneficios']);
 
         // Vagas
+        Route::get('vagas/filtros', [VagaController::class, 'filtros']);
         Route::apiResource('vagas', VagaController::class);
         Route::patch('vagas/{vaga}/status', [VagaController::class, 'changeStatus']);
         Route::post('vagas/{vaga}/convidar', [VagaController::class, 'convidarFranquias']);
@@ -635,6 +636,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('vagas',                              [FranquiaVagaController::class, 'index']);
         Route::post('vagas',                             [FranquiaVagaController::class, 'store']);
         Route::get('vagas/niveis',                       [FranquiaVagaController::class, 'niveis']);
+        Route::get('vagas/filtros',                      [FranquiaVagaController::class, 'filtros']);
         Route::get('vagas/franquias',                    [FranquiaVagaController::class, 'franquiasDisponiveis']);
         Route::get('vagas/{id}',                         [FranquiaVagaController::class, 'show']);
         Route::put('vagas/{id}',                         [FranquiaVagaController::class, 'update']);

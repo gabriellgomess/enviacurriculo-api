@@ -2,19 +2,22 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ListagemVagas;
 use App\Http\Controllers\Controller;
 use App\Models\Vaga;
 use Illuminate\Http\Request;
 
 class VagaController extends Controller
 {
+    use ListagemVagas;
+
     public function index(Request $request)
     {
         $query = Vaga::with([
             'empresa:id,codigo,razao_social,nome_fantasia',
             'franquia:id,codigo,nome',
             'nivelVaga:id,nome',
-        ]);
+        ])->withCount('franquiasCompartilhadas as total_convidadas');
 
         if ($request->filled('search')) {
             $s = $request->search;
@@ -31,49 +34,21 @@ class VagaController extends Controller
             });
         }
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->filled('empresa_id')) {
-            $query->where('empresa_id', $request->empresa_id);
-        }
-
-        if ($request->filled('franquia_id')) {
-            $query->where('franquia_id', $request->franquia_id);
-        }
-
-        if ($request->filled('nivel_vaga_id')) {
-            $query->where('nivel_vaga_id', $request->nivel_vaga_id);
-        }
-
-        if ($request->filled('tipo_contrato')) {
-            $query->where('tipo_contrato', $request->tipo_contrato);
-        }
-
-        if ($request->filled('canal')) {
-            $query->where('canal', $request->canal);
-        }
-
-        if ($request->filled('regime_trabalho')) {
-            $query->where('regime_trabalho', $request->regime_trabalho);
-        }
-
-        if ($request->filled('cidade')) {
-            $query->where('cidade', 'like', '%' . $request->cidade . '%');
-        }
-
-        if ($request->filled('estado')) {
-            $query->where('estado', $request->estado);
-        }
-
-        if ($request->filled('genero')) {
-            $query->where('genero', $request->genero);
-        }
-
-        if ($request->filled('turno')) {
-            $query->where('turno', $request->turno);
-        }
+        // Os filtros da tela são seletores múltiplos: cada um pode chegar como
+        // lista. Valor único continua valendo para as chamadas antigas.
+        $this->filtrarPorLista($query, $request, 'status', 'status');
+        $this->filtrarPorLista($query, $request, 'empresa_id', 'empresa_id');
+        $this->filtrarPorLista($query, $request, 'franquia_id', 'franquia_id');
+        $this->filtrarPorLista($query, $request, 'nivel_vaga_id', 'nivel_vaga_id');
+        $this->filtrarPorLista($query, $request, 'tipo_contrato', 'tipo_contrato');
+        $this->filtrarPorLista($query, $request, 'canal', 'canal');
+        $this->filtrarPorLista($query, $request, 'regime_trabalho', 'regime_trabalho');
+        $this->filtrarPorLista($query, $request, 'titulo', 'titulo', true);
+        $this->filtrarPorLista($query, $request, 'cidade', 'cidade', true);
+        $this->filtrarPorLista($query, $request, 'bairro', 'bairro', true);
+        $this->filtrarPorLista($query, $request, 'estado', 'estado');
+        $this->filtrarPorLista($query, $request, 'genero', 'genero');
+        $this->filtrarPorLista($query, $request, 'turno', 'turno');
 
         // Ordenação: padrão pela última atualização (mais recente primeiro)
         $sort = in_array($request->get('sort'), ['created_at', 'updated_at', 'titulo']) ? $request->get('sort') : 'updated_at';
@@ -84,6 +59,12 @@ class VagaController extends Controller
         $perPage = max(1, min((int) $request->input('per_page', 20), 500));
 
         $vagas = $query->orderBy($sort, $dir)->paginate($perPage);
+
+        $porSituacao = $this->candidatosPorSituacao($vagas->getCollection()->pluck('id')->all());
+        $vagas->getCollection()->each(fn($v) => $v->setAttribute(
+            'candidatos_situacao',
+            $porSituacao[$v->id] ?? $this->situacoesZeradas()
+        ));
 
         $meta = [
             'total'     => Vaga::count(),
@@ -97,6 +78,16 @@ class VagaController extends Controller
             'data' => $vagas->items(),
             'meta' => array_merge($vagas->toArray(), $meta),
         ]);
+    }
+
+    // GET /admin/vagas/filtros — opções cadastradas para os filtros de texto
+    public function filtros()
+    {
+        return response()->json(['data' => [
+            'titulos' => $this->opcoesDistintas(Vaga::query(), 'titulo'),
+            'cidades' => $this->opcoesDistintas(Vaga::query(), 'cidade'),
+            'bairros' => $this->opcoesDistintas(Vaga::query(), 'bairro'),
+        ]]);
     }
 
     public function store(Request $request)

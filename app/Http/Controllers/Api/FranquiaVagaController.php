@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Concerns\HasTokenContext;
+use App\Http\Controllers\Concerns\ListagemVagas;
 use App\Http\Controllers\Controller;
 use App\Models\Candidato;
 use App\Models\Empresa;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Storage;
 
 class FranquiaVagaController extends Controller
 {
-    use HasTokenContext;
+    use HasTokenContext, ListagemVagas;
 
     /** Aborta com 403 se a franquia nao for Premium. */
     private function assertPremium(int $franquiaId, string $mensagem): void
@@ -112,39 +113,21 @@ class FranquiaVagaController extends Controller
                 $query->whereDoesntHave('franquiasCompartilhadas', fn($q) => $q->where('franquias.id', $franquiaId));
             }
         }
-        if ($request->filled('cidade')) {
-            $query->where('cidade', 'like', '%' . $request->cidade . '%');
-        }
-        if ($request->filled('estado')) {
-            $query->where('estado', $request->estado);
-        }
-        if ($request->filled('bairro')) {
-            $query->where('bairro', 'like', '%' . $request->bairro . '%');
-        }
-        if ($request->filled('titulo')) {
-            $query->where('titulo', 'like', '%' . $request->titulo . '%');
-        }
-        if ($request->filled('tipo_contrato')) {
-            $query->where('tipo_contrato', $request->tipo_contrato);
-        }
-        if ($request->filled('modalidade')) {
-            $query->where('regime_trabalho', $request->modalidade);
-        }
-        if ($request->filled('empresa_id')) {
-            $query->where('empresa_id', $request->empresa_id);
-        }
+        // Os filtros da tela são seletores múltiplos: cada um pode chegar como
+        // lista. Valor único continua valendo para as chamadas antigas.
+        $this->filtrarPorLista($query, $request, 'cidade', 'cidade', true);
+        $this->filtrarPorLista($query, $request, 'estado', 'estado');
+        $this->filtrarPorLista($query, $request, 'bairro', 'bairro', true);
+        $this->filtrarPorLista($query, $request, 'titulo', 'titulo', true);
+        $this->filtrarPorLista($query, $request, 'tipo_contrato', 'tipo_contrato');
+        $this->filtrarPorLista($query, $request, 'modalidade', 'regime_trabalho');
+        $this->filtrarPorLista($query, $request, 'empresa_id', 'empresa_id');
         // Unidade dona da vaga. Só franquia premium é dona, então o seletor da
         // tela lista apenas essas — inclusive a Unidade Matriz, que concentra
         // todo o acervo migrado.
-        if ($request->filled('franquia_id')) {
-            $query->where('franquia_id', $request->franquia_id);
-        }
-        if ($request->filled('genero')) {
-            $query->where('genero', $request->genero);
-        }
-        if ($request->filled('turno')) {
-            $query->where('turno', $request->turno);
-        }
+        $this->filtrarPorLista($query, $request, 'franquia_id', 'franquia_id');
+        $this->filtrarPorLista($query, $request, 'genero', 'genero');
+        $this->filtrarPorLista($query, $request, 'turno', 'turno');
         if ($request->boolean('sem_candidato')) {
             $query->whereDoesntHave('envios');
         }
@@ -159,8 +142,11 @@ class FranquiaVagaController extends Controller
 
         $vagas = $query->orderBy($sort, $dir)->paginate($perPage);
 
+        $porSituacao = $this->candidatosPorSituacao($vagas->getCollection()->pluck('id')->all());
+
         $items = $vagas->getCollection()->map(fn($v) => [
             'id'                => $v->id,
+            'codigo'            => $v->codigo,
             'titulo'            => $v->titulo,
             // A empresa pode ocultar dados da vaga para a agência (ocultar_*_agencia),
             // e quem cadastrou pode marcar a vaga como confidencial (esconde de
@@ -182,6 +168,7 @@ class FranquiaVagaController extends Controller
             'carga_horaria'     => $v->carga_horaria,
             'vagas_disponiveis' => $v->quantidade_vagas,
             'total_candidatos'  => $v->total_candidatos,
+            'candidatos_situacao' => $porSituacao[$v->id] ?? $this->situacoesZeradas(),
             'ativa'             => $v->status === 'publicada',
             'status'            => $v->status,
             'expira_em'         => $v->data_fechamento,
@@ -192,6 +179,7 @@ class FranquiaVagaController extends Controller
             'turno'             => $v->turno,
             'is_owner'          => $v->franquia_id === $franquiaId,
             'is_invited'        => $v->franquiasCompartilhadas->contains('id', $franquiaId),
+            'total_convidadas'  => $v->franquiasCompartilhadas->count(),
             'shared_with'       => $v->franquiasCompartilhadas->map(fn($f) => ['id' => $f->id, 'nome' => $f->nome]),
             'franquia_dona'     => $v->franquia ? [
                 'id'       => $v->franquia->id,
@@ -211,6 +199,29 @@ class FranquiaVagaController extends Controller
                 'last_page'    => $vagas->lastPage(),
             ],
         ]);
+    }
+
+    // GET /franquia/vagas/filtros — opções cadastradas para os filtros de texto
+    public function filtros(Request $request)
+    {
+        $franquiaId = $this->tokenContextId($request);
+
+        // Mesmas regras de ocultação da listagem: um bairro ou cidade que a
+        // franquia não pode ver no card também não aparece como opção.
+        $semEnderecoOcultoPelaEmpresa = fn($q) => $q->where(fn($w) => $w
+            ->where('ocultar_endereco_agencia', false)
+            ->orWhereNotIn('canal', ['agencia', 'ambos']));
+
+        return response()->json(['data' => [
+            'titulos' => $this->opcoesDistintas(Vaga::query(), 'titulo'),
+            'cidades' => $this->opcoesDistintas($semEnderecoOcultoPelaEmpresa(Vaga::query()), 'cidade'),
+            'bairros' => $this->opcoesDistintas(
+                $semEnderecoOcultoPelaEmpresa(Vaga::query())->where(fn($w) => $w
+                    ->where('confidencial', false)
+                    ->orWhere('franquia_id', $franquiaId)),
+                'bairro'
+            ),
+        ]]);
     }
 
     // POST /franquia/vagas
