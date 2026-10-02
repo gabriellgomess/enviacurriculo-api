@@ -86,6 +86,9 @@ class VagaController extends Controller
             'rascunhos' => Vaga::where('status', 'rascunho')->count(),
             'pausadas'  => Vaga::where('status', 'pausada')->count(),
             'fechadas'  => Vaga::where('status', 'fechada')->count(),
+            // Uma vaga pode ter mais de uma posição (quantidade_vagas).
+            'posicoes_abertas' => (int) Vaga::where('status', 'publicada')->sum('quantidade_vagas'),
+            'posicoes_total'   => (int) Vaga::sum('quantidade_vagas'),
         ];
 
         return response()->json([
