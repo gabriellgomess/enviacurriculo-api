@@ -77,6 +77,15 @@ class FranquiaRelatorioProcessoController extends Controller
             $query->whereHas('vaga', fn($v) => $v->where('empresa_id', $request->empresa_id));
         }
 
+        // Mesmo filtro do admin, por cima do escopo acima: deixa a start
+        // recortar o que ela mandou pra uma Premium específica, e deixa a
+        // premium isolar, dentro do que já enxerga, só a parte das empresas
+        // que ela cuida.
+        if ($request->filled('unidade_premium_id')) {
+            $empresaIds = Empresa::where('franquia_id', $request->unidade_premium_id)->pluck('id');
+            $query->whereHas('vaga', fn($v) => $v->whereIn('empresa_id', $empresaIds));
+        }
+
         if ($request->filled('status')) {
             // "Pendente" na interface é `enviado` no banco — ver a explicação
             // em AdminRelatorioProcessoController.
