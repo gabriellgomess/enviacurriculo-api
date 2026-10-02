@@ -150,6 +150,7 @@ class FranquiaVagaController extends Controller
         $this->filtrarPorLista($query, $request, 'titulo', 'titulo', true);
         $this->filtrarPorLista($query, $request, 'tipo_contrato', 'tipo_contrato');
         $this->filtrarPorLista($query, $request, 'modalidade', 'regime_trabalho');
+        $this->filtrarPorLista($query, $request, 'nivel_vaga_id', 'nivel_vaga_id');
         $this->filtrarPorLista($query, $request, 'empresa_id', 'empresa_id');
         // Unidade dona da vaga. Só franquia premium é dona, então o seletor da
         // tela lista apenas essas — inclusive a Unidade Matriz, que concentra
