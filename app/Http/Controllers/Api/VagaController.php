@@ -16,7 +16,8 @@ class VagaController extends Controller
     {
         $query = Vaga::with([
             'empresa:id,codigo,razao_social,nome_fantasia',
-            'franquia:id,codigo,nome',
+            // tipo/telefone/e-mail alimentam a caixa da franquia responsável no card
+            'franquia:id,codigo,nome,tipo,telefone,email,email_franqueado',
             'nivelVaga:id,nome',
         ])->withCount('franquiasCompartilhadas as total_convidadas');
 
@@ -34,6 +35,15 @@ class VagaController extends Controller
                       ->orWhere('nome_fantasia', 'like', "%{$s}%"));
             });
         }
+
+        // Abas da tela (as mesmas do painel do franqueado). Somam-se ao filtro
+        // de status detalhado, que só o Admin tem.
+        match ($request->input('situacao')) {
+            'ativa'        => $query->where('status', 'publicada'),
+            'inativa'      => $query->where('status', '!=', 'publicada'),
+            'confidencial' => $query->where('confidencial', true),
+            default        => null,
+        };
 
         // Os filtros da tela são seletores múltiplos: cada um pode chegar como
         // lista. Valor único continua valendo para as chamadas antigas.
@@ -68,6 +78,9 @@ class VagaController extends Controller
         ));
 
         $meta = [
+            // `total` abaixo é o do acervo inteiro (cards de resumo); este é o
+            // da lista com os filtros aplicados.
+            'total_filtrado' => $vagas->total(),
             'total'     => Vaga::count(),
             'publicadas'=> Vaga::where('status', 'publicada')->count(),
             'rascunhos' => Vaga::where('status', 'rascunho')->count(),
