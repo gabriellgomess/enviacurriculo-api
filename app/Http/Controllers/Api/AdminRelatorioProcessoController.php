@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Empresa;
 use App\Models\Envio;
+use App\Models\Franquia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -53,13 +54,19 @@ class AdminRelatorioProcessoController extends Controller
             $query->whereHas('vaga', fn($v) => $v->where('empresa_id', $request->empresa_id));
         }
 
-        // Unidade Premium responsável pela empresa — não é quem encaminhou
-        // (isso é `franquia_id`), é quem cuida da empresa que recebeu a vaga.
-        // Mesmo critério usado no escopo do relatório da própria franquia
-        // premium (FranquiaRelatorioProcessoController::aplicarEscopo).
+        // Unidade Premium/Start. O sentido depende do tipo da unidade escolhida:
+        //   premium → envios para as empresas que ela cuida, venham de quem vier;
+        //   start   → envios feitos por ela, já que start não é responsável
+        //             por empresa (só premium gerencia empresa).
         if ($request->filled('unidade_premium_id')) {
-            $empresaIds = Empresa::where('franquia_id', $request->unidade_premium_id)->pluck('id');
-            $query->whereHas('vaga', fn($v) => $v->whereIn('empresa_id', $empresaIds));
+            $unidade = Franquia::find($request->unidade_premium_id);
+
+            if ($unidade?->tipo === 'premium') {
+                $empresaIds = Empresa::where('franquia_id', $unidade->id)->pluck('id');
+                $query->whereHas('vaga', fn($v) => $v->whereIn('empresa_id', $empresaIds));
+            } else {
+                $query->where('franquia_id', $request->unidade_premium_id);
+            }
         }
 
         if ($request->filled('status')) {
