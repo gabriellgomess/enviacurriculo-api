@@ -19,8 +19,10 @@ use Illuminate\Support\Facades\DB;
  *  - Fechada: vínculo que chegou a Aprovado. Reposição também conta, porque
  *    houve contratação. Conta no período do VÍNCULO, para a conversão
  *    (fechadas ÷ vínculos) ser sempre sobre o mesmo grupo.
- *  - Envio: vínculo encaminhado por uma franquia. Os demais vieram do feed
- *    (candidatura espontânea).
+ *  - Envio: vínculo encaminhado por uma franquia. Sem franquia, o vínculo é
+ *    do feed (candidatura espontânea, envios.origem = 'plataforma') ou "sem
+ *    unidade": migrados do sistema antigo sem consultor associado a uma
+ *    unidade, ou vinculados pelo Admin.
  *  - Unidade: a franquia que PRODUZIU o vínculo (envios.franquia_id). É ela
  *    que os filtros Unidades/Tipo e a divisão Premium x Start consideram.
  *
@@ -35,6 +37,9 @@ class AdminDesempenhoRedeController extends Controller
     // Chegou ao menos a ser visto / a entrar em processo (funil acumulado)
     private const VISUALIZOU  = "(e.visualizado_em IS NOT NULL OR e.status NOT IN ('enviado','pendente'))";
     private const PROCESSOU   = "e.status IN ('em_processo','em_entrevista','aprovado','reposicao')";
+    // Grupo do vínculo: tipo da unidade produtora, ou feed / sem unidade
+    private const GRUPO = "CASE WHEN f.tipo IS NOT NULL THEN f.tipo WHEN e.origem = 'plataforma' THEN 'feed' ELSE 'sem_unidade' END";
+    private const GRUPOS = ['premium', 'start', 'feed', 'sem_unidade'];
 
     /** Empresa sem contratação há mais que isto entra em "Precisa de atenção". */
     private const DIAS_SEM_FECHAR = 90;
@@ -183,6 +188,8 @@ class AdminDesempenhoRedeController extends Controller
 
         $r = $q->selectRaw('COUNT(*) as vinculos')
             ->selectRaw('SUM(e.franquia_id IS NOT NULL) as envios')
+            ->selectRaw("SUM(e.franquia_id IS NULL AND e.origem = 'plataforma') as feed")
+            ->selectRaw("SUM(e.franquia_id IS NULL AND (e.origem IS NULL OR e.origem <> 'plataforma')) as sem_unidade")
             ->selectRaw('SUM(' . self::FECHADAS . ') as fechadas')
             ->selectRaw("SUM(e.status = 'reposicao') as reposicoes")
             ->selectRaw('SUM(' . self::VISUALIZOU . ') as visualizados')
@@ -195,6 +202,8 @@ class AdminDesempenhoRedeController extends Controller
         return [
             'vinculos'     => $vinculos,
             'envios'       => (int) $r->envios,
+            'feed'         => (int) $r->feed,
+            'sem_unidade'  => (int) $r->sem_unidade,
             'fechadas'     => $fechadas,
             'reposicoes'   => (int) $r->reposicoes,
             'visualizados' => (int) $r->visualizados,
@@ -220,24 +229,24 @@ class AdminDesempenhoRedeController extends Controller
         ];
     }
 
-    /** Situações por tipo da unidade produtora (premium, start; "plataforma" = feed). */
+    /** Situações por grupo: tipo da unidade produtora, feed ou sem unidade. */
     private function situacoes(Request $request, ?array $intervalos): array
     {
         $q = $this->baseEnvios($request);
         $this->aplicarPeriodo($q, 'e.created_at', $intervalos);
 
-        $linhas = $q->selectRaw("COALESCE(f.tipo, 'plataforma') as tipo")
+        $linhas = $q->selectRaw(self::GRUPO . ' as tipo')
             ->selectRaw('SUM(' . self::PENDENTES . ') as pendentes')
             ->selectRaw('SUM(' . self::EM_PROCESSO . ') as em_processo')
             ->selectRaw("SUM(e.status = 'desistiu') as desistiu")
             ->selectRaw("SUM(e.status = 'reprovado') as reprovados")
-            ->groupByRaw("COALESCE(f.tipo, 'plataforma')")
+            ->groupByRaw(self::GRUPO)
             ->get()
             ->keyBy('tipo');
 
         $vazio = ['pendentes' => 0, 'em_processo' => 0, 'desistiu' => 0, 'reprovados' => 0];
 
-        return collect(['premium', 'start', 'plataforma'])->mapWithKeys(fn($t) => [
+        return collect(self::GRUPOS)->mapWithKeys(fn($t) => [
             $t => isset($linhas[$t])
                 ? array_map('intval', array_intersect_key((array) $linhas[$t], $vazio))
                 : $vazio,
@@ -387,10 +396,10 @@ class AdminDesempenhoRedeController extends Controller
         $linhas = $this->baseEnvios($request)
             ->whereYear('e.created_at', $ano)
             ->selectRaw('MONTH(e.created_at) as mes')
-            ->selectRaw("COALESCE(f.tipo, 'plataforma') as tipo")
+            ->selectRaw(self::GRUPO . ' as tipo')
             ->selectRaw('COUNT(*) as vinculos')
             ->selectRaw('SUM(' . self::FECHADAS . ') as fechadas')
-            ->groupByRaw("MONTH(e.created_at), COALESCE(f.tipo, 'plataforma')")
+            ->groupByRaw('MONTH(e.created_at), ' . self::GRUPO)
             ->get();
 
         $meses = [];
@@ -401,12 +410,10 @@ class AdminDesempenhoRedeController extends Controller
                 'fechadas' => (int) $doMes->where('tipo', $t)->sum('fechadas'),
             ];
             $meses[] = [
-                'mes'        => $m,
-                'premium'    => $porTipo('premium'),
-                'start'      => $porTipo('start'),
-                'plataforma' => $porTipo('plataforma'),
-                'vinculos'   => (int) $doMes->sum('vinculos'),
-                'fechadas'   => (int) $doMes->sum('fechadas'),
+                'mes'      => $m,
+                ...collect(self::GRUPOS)->mapWithKeys(fn($t) => [$t => $porTipo($t)])->all(),
+                'vinculos' => (int) $doMes->sum('vinculos'),
+                'fechadas' => (int) $doMes->sum('fechadas'),
             ];
         }
 
