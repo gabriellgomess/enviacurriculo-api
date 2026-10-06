@@ -83,6 +83,8 @@ class AdminDesempenhoRedeController extends Controller
                 'vinculos'          => $resumo['vinculos'],
                 'com_retorno'       => $resumo['com_retorno'],
                 'aguardando'        => $resumo['vinculos'] - $resumo['com_retorno'],
+                'reprovados'        => $resumo['reprovados'],
+                'desistiu'          => $resumo['desistiu'],
                 'fechadas'          => $resumo['fechadas'],
                 'reposicoes'        => $resumo['reposicoes'],
             ],
@@ -218,6 +220,8 @@ class AdminDesempenhoRedeController extends Controller
             ->selectRaw('SUM(' . self::FECHADAS . ') as fechadas')
             ->selectRaw("SUM(e.status = 'reposicao') as reposicoes")
             ->selectRaw('SUM(' . self::COM_RETORNO . ') as com_retorno')
+            ->selectRaw("SUM(e.status = 'reprovado') as reprovados")
+            ->selectRaw("SUM(e.status = 'desistiu') as desistiu")
             ->selectRaw('COUNT(DISTINCT e.vaga_id) as vagas_com_vinculo')
             ->first();
 
@@ -232,6 +236,8 @@ class AdminDesempenhoRedeController extends Controller
             'fechadas'     => $fechadas,
             'reposicoes'   => (int) $r->reposicoes,
             'com_retorno'  => (int) $r->com_retorno,
+            'reprovados'   => (int) $r->reprovados,
+            'desistiu'     => (int) $r->desistiu,
             'vagas_com_vinculo' => (int) $r->vagas_com_vinculo,
             'conversao'    => $vinculos ? round($fechadas / $vinculos * 100, 1) : null,
         ];
