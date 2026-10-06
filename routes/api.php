@@ -459,6 +459,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('acessos',   [AdminGestaoFranquiasController::class, 'acessos']);
             Route::get('auditoria', [AdminGestaoFranquiasController::class, 'auditoria']);
         });
+
+        // Indicadores — Desempenho da Rede
+        Route::get('indicadores/desempenho-rede', [\App\Http\Controllers\Api\AdminDesempenhoRedeController::class, 'index']);
     });
 
     /*
