@@ -86,6 +86,11 @@ class AdminDesempenhoRedeController extends Controller
                 'fechadas'          => $resumo['fechadas'],
                 'reposicoes'        => $resumo['reposicoes'],
             ],
+            // Período que a coluna "vs" do ranking de unidades compara
+            'comparacao'       => $anterior ? [
+                'de'  => $anterior[0][0]->toDateString(),
+                'ate' => $anterior[0][1]->toDateString(),
+            ] : null,
             'ranking_unidades' => $rankingUnid,
             'ranking_empresas' => $rankingEmp,
             'evolucao'         => $this->evolucao($request, $intervalos),
@@ -118,23 +123,40 @@ class AdminDesempenhoRedeController extends Controller
         return null;
     }
 
-    /** Período imediatamente anterior, de mesmo tamanho (só para um intervalo único). */
+    /**
+     * Período de comparação da coluna "vs" do ranking (só para um intervalo único).
+     *
+     * Mês e ano voltam um mês / um ano; os demais voltam o próprio tamanho.
+     * Se o período ainda está em andamento, compara só o mesmo trecho: em
+     * 06/10, outubro (1–6) contra 1–6 de setembro, e não contra setembro
+     * inteiro — senão todo mundo aparece em queda no começo do mês.
+     */
     private function intervaloAnterior(?array $intervalos): ?array
     {
         if (!$intervalos || count($intervalos) !== 1) {
             return null;
         }
         [$de, $ate] = $intervalos[0];
-        // diffInDays devolve fração (fim do dia às 23:59:59): arredonda para baixo
-        $dias = (int) floor($de->diffInDays($ate)) + 1;
 
-        // Mês inteiro → mês anterior inteiro (fevereiro não tem 31 dias)
-        if ($de->day === 1 && $ate->isSameDay($de->copy()->endOfMonth())) {
-            $mes = $de->copy()->subMonthNoOverflow();
-            return [[$mes->copy()->startOfMonth(), $mes->copy()->endOfMonth()]];
+        $emAndamento = $ate->isFuture();
+        $fim = $emAndamento ? now()->endOfDay() : $ate;
+
+        $mesInteiro = $de->day === 1 && $ate->isSameDay($de->copy()->endOfMonth());
+        $anoInteiro = $de->dayOfYear === 1 && $ate->isSameDay($de->copy()->endOfYear());
+
+        if ($mesInteiro || $anoInteiro) {
+            $voltar = fn(Carbon $d) => $mesInteiro ? $d->copy()->subMonthNoOverflow() : $d->copy()->subYearNoOverflow();
+            $inicio = $voltar($de);
+            $limite = $mesInteiro ? $inicio->copy()->endOfMonth() : $inicio->copy()->endOfYear();
+            $final  = $emAndamento ? $voltar($fim)->endOfDay()->min($limite) : $limite;
+            return [[$inicio, $final]];
         }
 
-        return [[$de->copy()->subDays($dias), $de->copy()->subSecond()]];
+        // diffInDays devolve fração (fim do dia às 23:59:59): arredonda para baixo
+        $dias  = (int) floor($de->diffInDays($ate)) + 1;
+        $final = $fim->copy()->subDays($dias)->endOfDay()->min($de->copy()->subSecond());
+
+        return [[$de->copy()->subDays($dias), $final]];
     }
 
     private function aplicarPeriodo($query, string $coluna, ?array $intervalos): void
