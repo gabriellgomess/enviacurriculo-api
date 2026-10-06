@@ -42,6 +42,13 @@ class AdminDesempenhoRedeController extends Controller
     private const GRUPO = "CASE WHEN f.tipo IS NOT NULL THEN f.tipo WHEN e.origem = 'plataforma' THEN 'feed' ELSE 'sem_unidade' END";
     private const GRUPOS = ['premium', 'start', 'feed', 'sem_unidade'];
 
+    /** Filtro "Origem do vínculo" → valores de envios.origem. */
+    private const ORIGENS = [
+        'franquia' => 'franquia',   // vinculado no sistema novo (franquia ou Admin)
+        'migracao' => 'migracao',   // trazido do sistema antigo
+        'feed'     => 'plataforma', // candidatura feita pelo próprio candidato
+    ];
+
     /** Empresa sem contratação há mais que isto entra em "Precisa de atenção". */
     private const DIAS_SEM_FECHAR = 90;
 
@@ -58,6 +65,12 @@ class AdminDesempenhoRedeController extends Controller
             'empresa_ids'     => 'nullable|array',
             'empresa_ids.*'   => 'integer',
             'tipo'            => 'nullable|in:premium,start',
+            'origens'         => 'nullable|array',
+            'origens.*'       => 'in:' . implode(',', array_keys(self::ORIGENS)),
+            'dona_ids'        => 'nullable|array',
+            'dona_ids.*'      => 'integer',
+            'nivel_ids'       => 'nullable|array',
+            'nivel_ids.*'     => 'integer',
         ]);
 
         $intervalos = $this->intervalos($request);
@@ -197,13 +210,40 @@ class AdminDesempenhoRedeController extends Controller
         if ($request->filled('tipo')) {
             $query->where('f.tipo', $request->tipo);
         }
+        if ($origens = (array) $request->input('origens', [])) {
+            $query->whereIn('e.origem', array_map(fn($o) => self::ORIGENS[$o], $origens));
+        }
+        $this->filtrosDaVaga($query, $request, 'v.');
 
         return $query;
     }
 
-    private function filtraUnidadeOuTipo(Request $request): bool
+    /**
+     * Filtros que são da vaga, não do vínculo: unidade dona e nível. Valem
+     * tanto para os vínculos quanto para as contagens de vagas.
+     */
+    private function filtrosDaVaga($query, Request $request, string $prefixo = ''): void
     {
-        return (bool) $this->ids($request, 'franquia_ids') || $request->filled('tipo');
+        if ($ids = $this->ids($request, 'dona_ids')) {
+            $query->whereIn($prefixo . 'franquia_id', $ids);
+        }
+        if ($ids = $this->ids($request, 'nivel_ids')) {
+            $query->whereIn($prefixo . 'nivel_vaga_id', $ids);
+        }
+    }
+
+    /**
+     * Algum filtro além de período e empresa (quem encaminhou, tipo, origem,
+     * unidade dona, nível)? Com eles, a lista de empresas se limita às que
+     * tiveram vínculo filtrado — senão viria cheia de linhas zeradas.
+     */
+    private function filtraVinculos(Request $request): bool
+    {
+        return (bool) $this->ids($request, 'franquia_ids')
+            || $request->filled('tipo')
+            || (bool) $request->input('origens')
+            || (bool) $this->ids($request, 'dona_ids')
+            || (bool) $this->ids($request, 'nivel_ids');
     }
 
     /* ─── Seções ─────────────────────────────────────────────────────── */
@@ -287,17 +327,13 @@ class AdminDesempenhoRedeController extends Controller
     /** Vagas criadas no período e vagas publicadas sem nenhum vínculo. */
     private function vagas(Request $request, ?array $intervalos): array
     {
+        // Vaga não tem "quem encaminhou" nem origem: aqui valem só os
+        // filtros da própria vaga (empresa, unidade dona e nível).
         $filtrar = function ($q) use ($request) {
             if ($ids = $this->ids($request, 'empresa_ids')) {
                 $q->whereIn('empresa_id', $ids);
             }
-            // Vaga não tem "produtor": aqui a unidade é a dona da vaga
-            if ($ids = $this->ids($request, 'franquia_ids')) {
-                $q->whereIn('franquia_id', $ids);
-            }
-            if ($request->filled('tipo')) {
-                $q->whereHas('franquia', fn($f) => $f->where('tipo', $request->tipo));
-            }
+            $this->filtrosDaVaga($q, $request);
             return $q;
         };
 
@@ -366,6 +402,7 @@ class AdminDesempenhoRedeController extends Controller
 
         $vagasQ = Vaga::query()
             ->when($this->ids($request, 'empresa_ids'), fn($q, $ids) => $q->whereIn('empresa_id', $ids));
+        $this->filtrosDaVaga($vagasQ, $request);
         $this->aplicarPeriodo($vagasQ, 'created_at', $intervalos);
         $vagasPorEmpresa = $vagasQ->groupBy('empresa_id')
             ->selectRaw('empresa_id, COUNT(*) as total')
@@ -389,7 +426,7 @@ class AdminDesempenhoRedeController extends Controller
             ->where(fn($w) => $w->where('emp.active', true)->orWhereIn('emp.id', $porEmpresa->keys()))
             ->when($this->ids($request, 'empresa_ids'), fn($q, $ids) => $q->whereIn('emp.id', $ids))
             // Filtrando por unidade, só interessam as empresas em que ela produziu
-            ->when($this->filtraUnidadeOuTipo($request), fn($q) => $q->whereIn('emp.id', $porEmpresa->keys()))
+            ->when($this->filtraVinculos($request), fn($q) => $q->whereIn('emp.id', $porEmpresa->keys()))
             ->get(['emp.id', 'emp.razao_social', 'emp.nome_fantasia', 'emp.active', 'fr.nome as unidade']);
 
         $hoje = now()->startOfDay();
