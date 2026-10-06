@@ -34,9 +34,10 @@ class AdminDesempenhoRedeController extends Controller
     private const FECHADAS    = "e.status IN ('aprovado','reposicao')";
     private const PENDENTES   = "e.status IN ('enviado','visualizado','pendente')";
     private const EM_PROCESSO = "e.status IN ('em_processo','em_entrevista')";
-    // Chegou ao menos a ser visto / a entrar em processo (funil acumulado)
-    private const VISUALIZOU  = "(e.visualizado_em IS NOT NULL OR e.status NOT IN ('enviado','pendente'))";
-    private const PROCESSOU   = "e.status IN ('em_processo','em_entrevista','aprovado','reposicao')";
+    // Já tem decisão (aprovado, reprovado ou desistiu). O funil não usa
+    // "visualizado" nem "em processo": em produção visualizado_em nunca é
+    // preenchido e nenhum vínculo passou por em_processo (dump de 06/10/2026).
+    private const COM_RETORNO = "e.status IN ('aprovado','reposicao','reprovado','desistiu')";
     // Grupo do vínculo: tipo da unidade produtora, ou feed / sem unidade
     private const GRUPO = "CASE WHEN f.tipo IS NOT NULL THEN f.tipo WHEN e.origem = 'plataforma' THEN 'feed' ELSE 'sem_unidade' END";
     private const GRUPOS = ['premium', 'start', 'feed', 'sem_unidade'];
@@ -76,12 +77,14 @@ class AdminDesempenhoRedeController extends Controller
             'vinculos_janelas' => $this->janelas($request),
             'situacoes'        => $this->situacoes($request, $intervalos),
             'funil'            => [
-                'vagas'        => $vagas['criadas'],
-                'vinculos'     => $resumo['vinculos'],
-                'visualizados' => $resumo['visualizados'],
-                'em_processo'  => $resumo['em_processo'],
-                'fechadas'     => $resumo['fechadas'],
-                'reposicoes'   => $resumo['reposicoes'],
+                // Vagas que receberam vínculo no período: base do "vínculos por vaga"
+                'vagas_com_vinculo' => $resumo['vagas_com_vinculo'],
+                'vagas_criadas'     => $vagas['criadas'],
+                'vinculos'          => $resumo['vinculos'],
+                'com_retorno'       => $resumo['com_retorno'],
+                'aguardando'        => $resumo['vinculos'] - $resumo['com_retorno'],
+                'fechadas'          => $resumo['fechadas'],
+                'reposicoes'        => $resumo['reposicoes'],
             ],
             'ranking_unidades' => $rankingUnid,
             'ranking_empresas' => $rankingEmp,
@@ -192,8 +195,8 @@ class AdminDesempenhoRedeController extends Controller
             ->selectRaw("SUM(e.franquia_id IS NULL AND (e.origem IS NULL OR e.origem <> 'plataforma')) as sem_unidade")
             ->selectRaw('SUM(' . self::FECHADAS . ') as fechadas')
             ->selectRaw("SUM(e.status = 'reposicao') as reposicoes")
-            ->selectRaw('SUM(' . self::VISUALIZOU . ') as visualizados')
-            ->selectRaw('SUM(' . self::PROCESSOU . ') as em_processo')
+            ->selectRaw('SUM(' . self::COM_RETORNO . ') as com_retorno')
+            ->selectRaw('COUNT(DISTINCT e.vaga_id) as vagas_com_vinculo')
             ->first();
 
         $vinculos = (int) $r->vinculos;
@@ -206,8 +209,8 @@ class AdminDesempenhoRedeController extends Controller
             'sem_unidade'  => (int) $r->sem_unidade,
             'fechadas'     => $fechadas,
             'reposicoes'   => (int) $r->reposicoes,
-            'visualizados' => (int) $r->visualizados,
-            'em_processo'  => (int) $r->em_processo,
+            'com_retorno'  => (int) $r->com_retorno,
+            'vagas_com_vinculo' => (int) $r->vagas_com_vinculo,
             'conversao'    => $vinculos ? round($fechadas / $vinculos * 100, 1) : null,
         ];
     }
@@ -349,14 +352,17 @@ class AdminDesempenhoRedeController extends Controller
             ->selectRaw('v.empresa_id, MAX(COALESCE(e.data_admissao, DATE(e.updated_at))) as ultima')
             ->pluck('ultima', 'empresa_id');
 
+        // Ativas, mais as inativas que tiveram vínculo no período: sem isso a
+        // tabela escondia empresas que somam nos totais (em produção, 164
+        // inativas com 2.273 vínculos e 135 fechadas).
         $empresas = DB::table('empresas as emp')
             ->leftJoin('franquias as fr', 'fr.id', '=', 'emp.franquia_id')
             ->whereNull('emp.deleted_at')
-            ->where('emp.active', true)
+            ->where(fn($w) => $w->where('emp.active', true)->orWhereIn('emp.id', $porEmpresa->keys()))
             ->when($this->ids($request, 'empresa_ids'), fn($q, $ids) => $q->whereIn('emp.id', $ids))
             // Filtrando por unidade, só interessam as empresas em que ela produziu
             ->when($this->filtraUnidadeOuTipo($request), fn($q) => $q->whereIn('emp.id', $porEmpresa->keys()))
-            ->get(['emp.id', 'emp.razao_social', 'emp.nome_fantasia', 'fr.nome as unidade']);
+            ->get(['emp.id', 'emp.razao_social', 'emp.nome_fantasia', 'emp.active', 'fr.nome as unidade']);
 
         $hoje = now()->startOfDay();
 
@@ -369,6 +375,7 @@ class AdminDesempenhoRedeController extends Controller
             return [
                 'id'                 => $e->id,
                 'nome'               => $e->nome_fantasia ?: $e->razao_social,
+                'ativa'              => (bool) $e->active,
                 'unidade'            => $e->unidade,
                 'vagas'              => (int) ($vagasPorEmpresa[$e->id] ?? 0),
                 'vinculos'           => $vinculos,
