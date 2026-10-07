@@ -60,6 +60,9 @@ class AdminDesempenhoRedeController extends Controller
             'ate'             => 'nullable|date',
             'meses'           => 'nullable|array',
             'meses.*'         => 'date_format:Y-m',
+            'anos'            => 'nullable|array',
+            'anos.*'          => 'integer|min:2000|max:2100',
+            'ano_evolucao'    => 'nullable|integer|min:2000|max:2100',
             'franquia_ids'    => 'nullable|array',
             'franquia_ids.*'  => 'integer',
             'empresa_ids'     => 'nullable|array',
@@ -109,6 +112,7 @@ class AdminDesempenhoRedeController extends Controller
             'ranking_unidades' => $rankingUnid,
             'ranking_empresas' => $rankingEmp,
             'evolucao'         => $this->evolucao($request, $intervalos),
+            'anos_disponiveis' => $this->anosDisponiveis(),
             'atencao'          => $this->atencao($rankingUnid, $rankingEmp, $vagas, $resumo),
         ]]);
     }
@@ -117,10 +121,19 @@ class AdminDesempenhoRedeController extends Controller
 
     /**
      * Intervalos [início, fim] do filtro de período, ou null para "tudo".
-     * "Meses" pode ser não contíguo (jan + mar), por isso uma lista.
+     * "Meses" e "Anos" podem ser não contíguos (jan + mar, 2024 + 2026),
+     * por isso uma lista.
      */
     private function intervalos(Request $request): ?array
     {
+        $anos = array_filter(array_map('intval', (array) $request->input('anos', [])));
+        if ($anos) {
+            return collect($anos)->unique()->sort()->map(fn($a) => [
+                Carbon::create($a)->startOfYear(),
+                Carbon::create($a)->endOfYear(),
+            ])->values()->all();
+        }
+
         $meses = array_filter((array) $request->input('meses', []));
         if ($meses) {
             return collect($meses)->unique()->sort()->map(function ($m) {
@@ -462,10 +475,23 @@ class AdminDesempenhoRedeController extends Controller
             ->all();
     }
 
-    /** Vínculos e fechadas por mês do ano do período (ou do ano corrente), por tipo. */
+    /** Anos com vínculo registrado, do primeiro até o corrente (opções dos filtros de ano). */
+    private function anosDisponiveis(): array
+    {
+        $primeiro = DB::table('envios')->min('created_at');
+        $inicio = $primeiro ? Carbon::parse($primeiro)->year : now()->year;
+        return range($inicio, now()->year);
+    }
+
+    /**
+     * Vínculos e fechadas por mês de um ano, por tipo. O ano é o escolhido no
+     * próprio gráfico; sem escolha, o último ano do período (ou o corrente).
+     */
     private function evolucao(Request $request, ?array $intervalos): array
     {
-        $ano = $intervalos ? end($intervalos)[1]->year : now()->year;
+        $ano = $request->filled('ano_evolucao')
+            ? (int) $request->ano_evolucao
+            : ($intervalos ? end($intervalos)[1]->year : now()->year);
 
         $linhas = $this->baseEnvios($request)
             ->whereYear('e.created_at', $ano)
