@@ -311,11 +311,13 @@ class AdminDesempenhoRedeController extends Controller
             ->selectRaw('SUM(' . self::EM_PROCESSO . ') as em_processo')
             ->selectRaw("SUM(e.status = 'desistiu') as desistiu")
             ->selectRaw("SUM(e.status = 'reprovado') as reprovados")
+            // Aprovados = fechadas (reposição inclusa): os cinco somam os vínculos do grupo
+            ->selectRaw('SUM(' . self::FECHADAS . ') as aprovados')
             ->groupByRaw(self::GRUPO)
             ->get()
             ->keyBy('tipo');
 
-        $vazio = ['pendentes' => 0, 'em_processo' => 0, 'desistiu' => 0, 'reprovados' => 0];
+        $vazio = ['pendentes' => 0, 'em_processo' => 0, 'desistiu' => 0, 'reprovados' => 0, 'aprovados' => 0];
 
         return collect(self::GRUPOS)->mapWithKeys(fn($t) => [
             $t => isset($linhas[$t])
