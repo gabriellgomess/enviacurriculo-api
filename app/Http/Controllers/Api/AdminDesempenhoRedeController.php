@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Empresa;
 use App\Models\Franquia;
 use App\Models\Vaga;
+use App\Services\Financeiro\ValoresColocacoes;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -83,6 +84,13 @@ class AdminDesempenhoRedeController extends Controller
         $rankingUnid   = $this->rankingUnidades($request, $intervalos, $anterior);
         $rankingEmp    = $this->rankingEmpresas($request, $intervalos);
         $vagas         = $this->vagas($request, $intervalos);
+        $anoEvolucao   = $this->anoEvolucao($request, $intervalos);
+
+        // Valores em dinheiro (motor de cálculo das colocações) — enriquecem
+        // os rankings e a evolução e montam os cards financeiros
+        $fin         = $this->financeiro($request, $intervalos, $anterior, $anoEvolucao);
+        $rankingUnid = $this->comValoresUnidades($rankingUnid, $fin);
+        $rankingEmp  = array_map(fn($e) => $e + ['realizado' => $fin['por_empresa'][$e['id']] ?? 0.0], $rankingEmp);
 
         return response()->json(['data' => [
             'rede' => [
@@ -111,7 +119,8 @@ class AdminDesempenhoRedeController extends Controller
             ] : null,
             'ranking_unidades' => $rankingUnid,
             'ranking_empresas' => $rankingEmp,
-            'evolucao'         => $this->evolucao($request, $intervalos),
+            'evolucao'         => $this->evolucao($request, $anoEvolucao, $fin['evolucao']),
+            'financeiro'       => $fin['cards'],
             'anos_disponiveis' => $this->anosDisponiveis(),
             'atencao'          => $this->atencao($rankingUnid, $rankingEmp, $vagas, $resumo),
         ]]);
@@ -475,6 +484,129 @@ class AdminDesempenhoRedeController extends Controller
             ->all();
     }
 
+    /* ─── Valores em dinheiro ────────────────────────────────────────── */
+
+    /**
+     * Indicadores financeiros calculados pelo motor (ValoresColocacoes), sem
+     * depender de fatura emitida: o "faturamento" aqui é o valor gerado pelas
+     * colocações (salário da admissão × taxa da vaga), na mesma data de
+     * referência do resto da tela — a do vínculo.
+     */
+    private function financeiro(Request $request, ?array $intervalos, ?array $anterior, int $anoEvolucao): array
+    {
+        $valores = app(ValoresColocacoes::class);
+        $doPeriodo = function (?array $periodo) use ($request, $valores) {
+            $q = $this->baseEnvios($request);
+            $this->aplicarPeriodo($q, 'e.created_at', $periodo);
+            return $valores->calcular($q);
+        };
+
+        $atual = $doPeriodo($intervalos);
+        $antes = $anterior ? $doPeriodo($anterior) : null;
+
+        // Em garantia: aprovados cujo prazo de reposição ainda não acabou —
+        // é o que ainda pode virar reposição. Vale hoje, não o período filtrado.
+        $hoje = now()->toDateString();
+        $em7  = now()->addDays(7)->toDateString();
+        $garantia = $valores->calcular(
+            $this->baseEnvios($request)->where('e.status', 'aprovado')
+                ->whereNotNull('e.data_admissao')
+                ->where('e.data_admissao', '>=', now()->subYear()->toDateString())
+        )->filter(fn($c) => $c['garantia_ate'] && $c['garantia_ate'] >= $hoje);
+
+        $porMes = $valores->calcular($this->baseEnvios($request)->whereYear('e.created_at', $anoEvolucao))
+            ->groupBy(fn($c) => $c['criado_em']->month)
+            ->map(fn($doMes) => $doMes->groupBy('grupo')->map(fn($g) => $g->sum('faturado'))->all())
+            ->all();
+
+        $porTipo = $atual->groupBy('grupo')->map(fn($g) => round($g->sum('faturado'), 2));
+        $metas   = $this->metasEmDinheiro($intervalos);
+        $tipoDe  = Franquia::pluck('tipo', 'id');
+
+        return [
+            'cards' => [
+                'faturamento'          => round($atual->sum('faturado'), 2),
+                'faturamento_anterior' => $antes ? round($antes->sum('faturado'), 2) : null,
+                'colocacoes'           => $atual->count(),
+                // Sem salário ou sem taxa: ficam fora dos valores (a tela avisa)
+                'incompletas'          => $atual->where('completa', false)->count(),
+                'por_tipo'             => [
+                    'premium'     => $porTipo['premium'] ?? 0.0,
+                    'start'       => $porTipo['start'] ?? 0.0,
+                    'feed'        => $porTipo['feed'] ?? 0.0,
+                    'sem_unidade' => $porTipo['sem_unidade'] ?? 0.0,
+                ],
+                'meta_por_tipo'        => [
+                    'premium' => round(collect($metas)->filter(fn($v, $id) => ($tipoDe[$id] ?? null) === 'premium')->sum(), 2),
+                    'start'   => round(collect($metas)->filter(fn($v, $id) => ($tipoDe[$id] ?? null) === 'start')->sum(), 2),
+                ],
+                'reposicoes_comissao'  => round($atual->where('status', 'reposicao')->sum('comissoes'), 2),
+                'garantia'             => [
+                    'total'      => $garantia->count(),
+                    'comissoes'  => round($garantia->sum('comissoes'), 2),
+                    'vencem_7_dias' => $garantia->filter(fn($c) => $c['garantia_ate'] <= $em7)->count(),
+                ],
+            ],
+            'por_unidade'          => $atual->groupBy('produtora_id')->map(fn($g) => round($g->sum('faturado'), 2))->all(),
+            'por_unidade_anterior' => $antes?->groupBy('produtora_id')->map(fn($g) => round($g->sum('faturado'), 2))->all(),
+            'por_empresa'          => $atual->groupBy('empresa_id')->map(fn($g) => round($g->sum('faturado'), 2))->all(),
+            'metas'                => $metas,
+            'evolucao'             => $porMes,
+        ];
+    }
+
+    /**
+     * Metas em dinheiro (tipos de meta com unidade "moeda", ex.: Faturamento)
+     * que tocam o período, somadas por unidade. Sem período, todas.
+     *
+     * @return array<int, float> [franquia_id => soma das metas]
+     */
+    private function metasEmDinheiro(?array $intervalos): array
+    {
+        $q = DB::table('metas_franquias as m')
+            ->join('tipos_metas as t', 't.id', '=', 'm.tipo_meta_id')
+            ->where('t.unidade', 'moeda')
+            ->whereIn('m.status', ['ativa', 'concluida']);
+
+        if ($intervalos) {
+            $q->where(function ($w) use ($intervalos) {
+                foreach ($intervalos as [$de, $ate]) {
+                    $w->orWhere(fn($x) => $x
+                        ->where(fn($y) => $y->whereNull('m.data_inicio')->orWhere('m.data_inicio', '<=', $ate->toDateString()))
+                        ->where(fn($y) => $y->whereNull('m.data_fim')->orWhere('m.data_fim', '>=', $de->toDateString())));
+                }
+            });
+        }
+
+        return $q->groupBy('m.franquia_id')
+            ->selectRaw('m.franquia_id, SUM(m.valor_meta) as total')
+            ->pluck('total', 'franquia_id')
+            ->map(fn($v) => (float) $v)
+            ->all();
+    }
+
+    /**
+     * Acrescenta realizado (faturamento produzido), o do período de comparação
+     * e a meta em dinheiro a cada unidade, e reordena por faturamento — como o
+     * ranking do mockup ("por faturamento no período").
+     */
+    private function comValoresUnidades(array $unidades, array $fin): array
+    {
+        return collect($unidades)->map(function ($u) use ($fin) {
+            $realizado = $fin['por_unidade'][$u['id']] ?? 0.0;
+            $meta      = $fin['metas'][$u['id']] ?? null;
+            return $u + [
+                'realizado'          => $realizado,
+                'realizado_anterior' => $fin['por_unidade_anterior'] === null ? null : ($fin['por_unidade_anterior'][$u['id']] ?? 0.0),
+                'meta'               => $meta,
+                'meta_perc'          => $meta ? round($realizado / $meta * 100, 1) : null,
+            ];
+        })
+            ->sortBy([['realizado', 'desc'], ['fechadas', 'desc'], ['vinculos', 'desc'], ['nome', 'asc']])
+            ->values()
+            ->all();
+    }
+
     /** Anos com vínculo registrado, do primeiro até o corrente (opções dos filtros de ano). */
     private function anosDisponiveis(): array
     {
@@ -487,11 +619,16 @@ class AdminDesempenhoRedeController extends Controller
      * Vínculos e fechadas por mês de um ano, por tipo. O ano é o escolhido no
      * próprio gráfico; sem escolha, o último ano do período (ou o corrente).
      */
-    private function evolucao(Request $request, ?array $intervalos): array
+    private function anoEvolucao(Request $request, ?array $intervalos): int
     {
-        $ano = $request->filled('ano_evolucao')
+        return $request->filled('ano_evolucao')
             ? (int) $request->ano_evolucao
             : ($intervalos ? end($intervalos)[1]->year : now()->year);
+    }
+
+    /** @param array $faturamento [mes][grupo] => valor faturado das colocações */
+    private function evolucao(Request $request, int $ano, array $faturamento): array
+    {
 
         $linhas = $this->baseEnvios($request)
             ->whereYear('e.created_at', $ano)
@@ -506,14 +643,16 @@ class AdminDesempenhoRedeController extends Controller
         for ($m = 1; $m <= 12; $m++) {
             $doMes = $linhas->where('mes', $m);
             $porTipo = fn($t) => [
-                'vinculos' => (int) $doMes->where('tipo', $t)->sum('vinculos'),
-                'fechadas' => (int) $doMes->where('tipo', $t)->sum('fechadas'),
+                'vinculos'    => (int) $doMes->where('tipo', $t)->sum('vinculos'),
+                'fechadas'    => (int) $doMes->where('tipo', $t)->sum('fechadas'),
+                'faturamento' => round($faturamento[$m][$t] ?? 0, 2),
             ];
             $meses[] = [
-                'mes'      => $m,
+                'mes'         => $m,
                 ...collect(self::GRUPOS)->mapWithKeys(fn($t) => [$t => $porTipo($t)])->all(),
-                'vinculos' => (int) $doMes->sum('vinculos'),
-                'fechadas' => (int) $doMes->sum('fechadas'),
+                'vinculos'    => (int) $doMes->sum('vinculos'),
+                'fechadas'    => (int) $doMes->sum('fechadas'),
+                'faturamento' => round(array_sum($faturamento[$m] ?? []), 2),
             ];
         }
 
