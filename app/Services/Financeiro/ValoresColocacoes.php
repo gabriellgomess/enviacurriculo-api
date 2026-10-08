@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\DB;
  *
  * A consulta recebida precisa ter os aliases "e" (envios), "v" (vagas) e
  * "f" (franquia que produziu), como a base do AdminDesempenhoRedeController.
- * $dataAprovacao é a expressão SQL da data da aprovação nessa consulta.
+ * $dataAprovacao é a expressão SQL da data da aprovação nessa consulta, e
+ * $dataReferencia a do mês em que a colocação conta (a admissão; para os
+ * aprovados ainda sem admissão, a data do estimado).
  *
  * Taxa: a da vaga; sem ela, a taxa cadastrada na empresa para o nível da vaga.
  * Colocação sem salário ou sem taxa fica marcada como incompleta e com valor
@@ -25,7 +27,7 @@ class ValoresColocacoes
     public function __construct(private readonly CalculoColocacao $calculo) {}
 
     /** @return Collection<int, array> uma linha por colocação */
-    public function calcular($envios, string $dataAprovacao = 'e.updated_at'): Collection
+    public function calcular($envios, string $dataAprovacao = 'e.updated_at', string $dataReferencia = 'e.data_admissao'): Collection
     {
         $configs = Percentuais::configsDoBanco();
         $porTipo = [];
@@ -42,6 +44,7 @@ class ValoresColocacoes
                 'v.franquia_id as dona_id', 'v.empresa_id', 'v.taxa_servico', 'ts.percentual as taxa_empresa',
                 'emp_val.reposicao_dias',
                 DB::raw("{$dataAprovacao} as aprovado_em"),
+                DB::raw("{$dataReferencia} as referencia"),
             ])
             // Mais de uma taxa cadastrada para o mesmo nível não pode duplicar a colocação
             ->unique('id');
@@ -68,6 +71,9 @@ class ValoresColocacoes
                 'status'           => $l->status,
                 'criado_em'        => Carbon::parse($l->created_at),
                 'aprovado_em'      => Carbon::parse($l->aprovado_em),
+                'referencia'       => $l->referencia ? Carbon::parse($l->referencia) : null,
+                // Aprovado ainda sem data de admissão: valor estimado
+                'estimado'         => $l->data_admissao === null,
                 'produtora_id'     => $l->produtora_id,
                 'dona_id'          => $l->dona_id,
                 'empresa_id'       => $l->empresa_id,
