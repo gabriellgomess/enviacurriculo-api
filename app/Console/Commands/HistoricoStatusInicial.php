@@ -24,7 +24,9 @@ use Illuminate\Support\Facades\DB;
  */
 class HistoricoStatusInicial extends Command
 {
-    protected $signature = 'envios:historico-inicial {--dry-run : Mostra o que seria gravado, sem gravar}';
+    protected $signature = 'envios:historico-inicial
+                            {--dry-run : Mostra o que seria gravado, sem gravar}
+                            {--lote=500 : Quantos vínculos processar por vez}';
 
     protected $description = 'Preenche o histórico de status com as aprovações anteriores ao histórico (datas estimadas)';
 
@@ -50,7 +52,11 @@ class HistoricoStatusInicial extends Command
         $gravadas = 0;
         $agora = now();
 
-        $pendentes->orderBy('e.id')->chunk(500, function ($lote) use ($simular, &$porMes, &$gravadas, $agora) {
+        // chunkById (e não chunk): cada lote gravado sai da lista de pendentes,
+        // e a paginação por posição pulava o lote seguinte inteiro — na
+        // primeira execução em produção, 500 de 1.295 ficaram de fora.
+        $tamanho = max(1, (int) $this->option('lote'));
+        $pendentes->chunkById($tamanho, function ($lote) use ($simular, &$porMes, &$gravadas, $agora) {
             $linhas = [];
             foreach ($lote as $e) {
                 $alteracao = Carbon::parse($e->updated_at);
@@ -73,7 +79,7 @@ class HistoricoStatusInicial extends Command
                 DB::table('envio_status_historico')->insert($linhas);
             }
             $gravadas += count($linhas);
-        });
+        }, 'e.id', 'id');
 
         ksort($porMes);
         $this->table(['Mês da aprovação (origem)', 'Contratações'], collect($porMes)->map(fn($n, $k) => [$k, $n])->values()->all());

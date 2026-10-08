@@ -104,4 +104,20 @@ class HistoricoStatusEnvioTest extends TestCase
         $this->artisan('envios:historico-inicial')->assertSuccessful();
         $this->assertSame(3, EnvioStatusHistorico::count());
     }
+
+    public function test_processa_todos_os_lotes_sem_pular_nenhum(): void
+    {
+        // Regressão: com paginação por posição, gravar um lote fazia o
+        // seguinte pular registros (em produção, 500 de 1.295 ficaram de fora)
+        $linhas = [];
+        for ($id = 1; $id <= 7; $id++) {
+            $linhas[] = ['id' => $id, 'status' => 'aprovado', 'origem' => 'franquia',
+                         'updated_at' => "2026-09-0{$id} 10:00:00", 'created_at' => '2026-08-01 10:00:00'];
+        }
+        DB::table('envios')->insert($linhas);
+
+        $this->artisan('envios:historico-inicial', ['--lote' => 2])->assertSuccessful();
+
+        $this->assertSame(7, EnvioStatusHistorico::where('status_novo', 'aprovado')->distinct()->count('envio_id'));
+    }
 }
