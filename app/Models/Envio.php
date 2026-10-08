@@ -117,4 +117,28 @@ class Envio extends Model
     {
         return $this->belongsTo(CandidatoDocumento::class, 'curriculo_id');
     }
+
+    public function historicoStatus()
+    {
+        return $this->hasMany(EnvioStatusHistorico::class);
+    }
+
+    /**
+     * Toda mudança de status entra no histórico, venha de qualquer painel.
+     * Edições que não mudam o status (salário, admissão, etapa do Kanban)
+     * não geram linha — por isso a data da aprovação não se perde mais.
+     *
+     * Atenção: update em massa pelo query builder (DB::table('envios')->update)
+     * não dispara eventos e não entra no histórico.
+     */
+    protected static function booted(): void
+    {
+        static::created(fn(Envio $envio) => EnvioStatusHistorico::registrar($envio, null));
+
+        static::updated(function (Envio $envio) {
+            if ($envio->wasChanged('status')) {
+                EnvioStatusHistorico::registrar($envio, $envio->getOriginal('status'));
+            }
+        });
+    }
 }

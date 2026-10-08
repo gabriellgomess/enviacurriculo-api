@@ -4,6 +4,7 @@ namespace App\Services\Financeiro;
 
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Calcula os valores das colocações (vínculos aprovados ou em reposição) de
@@ -13,6 +14,7 @@ use Illuminate\Support\Collection;
  *
  * A consulta recebida precisa ter os aliases "e" (envios), "v" (vagas) e
  * "f" (franquia que produziu), como a base do AdminDesempenhoRedeController.
+ * $dataAprovacao é a expressão SQL da data da aprovação nessa consulta.
  *
  * Taxa: a da vaga; sem ela, a taxa cadastrada na empresa para o nível da vaga.
  * Colocação sem salário ou sem taxa fica marcada como incompleta e com valor
@@ -23,7 +25,7 @@ class ValoresColocacoes
     public function __construct(private readonly CalculoColocacao $calculo) {}
 
     /** @return Collection<int, array> uma linha por colocação */
-    public function calcular($envios): Collection
+    public function calcular($envios, string $dataAprovacao = 'e.updated_at'): Collection
     {
         $configs = Percentuais::configsDoBanco();
         $porTipo = [];
@@ -39,6 +41,7 @@ class ValoresColocacoes
                 'e.franquia_id as produtora_id', 'f.tipo as tipo_produtora',
                 'v.franquia_id as dona_id', 'v.empresa_id', 'v.taxa_servico', 'ts.percentual as taxa_empresa',
                 'emp_val.reposicao_dias',
+                DB::raw("{$dataAprovacao} as aprovado_em"),
             ])
             // Mais de uma taxa cadastrada para o mesmo nível não pode duplicar a colocação
             ->unique('id');
@@ -64,6 +67,7 @@ class ValoresColocacoes
                 'id'               => $l->id,
                 'status'           => $l->status,
                 'criado_em'        => Carbon::parse($l->created_at),
+                'aprovado_em'      => Carbon::parse($l->aprovado_em),
                 'produtora_id'     => $l->produtora_id,
                 'dona_id'          => $l->dona_id,
                 'empresa_id'       => $l->empresa_id,

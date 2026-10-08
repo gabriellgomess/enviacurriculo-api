@@ -10,6 +10,7 @@ use App\Services\Financeiro\ValoresColocacoes;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Desempenho da Rede (Admin) — indicadores operacionais da rede inteira.
@@ -50,6 +51,13 @@ class AdminDesempenhoRedeController extends Controller
         'feed'     => 'plataforma', // candidatura feita pelo próprio candidato
     ];
 
+    /**
+     * Data da aprovação de cada contratação, para contar "o que foi aprovado
+     * no mês" (métrica do cliente). Vem do histórico de status; sem linha no
+     * histórico, a última alteração do vínculo. Definida em index().
+     */
+    private string $dataAprovacao = 'e.updated_at';
+
     /** Empresa sem contratação há mais que isto entra em "Precisa de atenção". */
     private const DIAS_SEM_FECHAR = 90;
 
@@ -80,7 +88,17 @@ class AdminDesempenhoRedeController extends Controller
         $intervalos = $this->intervalos($request);
         $anterior   = $this->intervaloAnterior($intervalos);
 
+        // Sem a tabela de histórico (migration ainda não aplicada), a tela
+        // segue funcionando com a última alteração como data da aprovação
+        $this->dataAprovacao = Schema::hasTable('envio_status_historico')
+            ? 'COALESCE(ap.aprovado_em, e.updated_at)'
+            : 'e.updated_at';
+
         $resumo        = $this->resumo($request, $intervalos);
+        // O funil acompanha os vínculos do período (coorte); os cards contam
+        // as contratações aprovadas no período
+        $funilCoorte   = $resumo;
+        $resumo        = $this->comContratacoes($resumo, $request, $intervalos);
         $rankingUnid   = $this->rankingUnidades($request, $intervalos, $anterior);
         $rankingEmp    = $this->rankingEmpresas($request, $intervalos);
         $vagas         = $this->vagas($request, $intervalos);
@@ -102,15 +120,15 @@ class AdminDesempenhoRedeController extends Controller
             'situacoes'        => $this->situacoes($request, $intervalos),
             'funil'            => [
                 // Vagas que receberam vínculo no período: base do "vínculos por vaga"
-                'vagas_com_vinculo' => $resumo['vagas_com_vinculo'],
+                'vagas_com_vinculo' => $funilCoorte['vagas_com_vinculo'],
                 'vagas_criadas'     => $vagas['criadas'],
-                'vinculos'          => $resumo['vinculos'],
-                'com_retorno'       => $resumo['com_retorno'],
-                'aguardando'        => $resumo['vinculos'] - $resumo['com_retorno'],
-                'reprovados'        => $resumo['reprovados'],
-                'desistiu'          => $resumo['desistiu'],
-                'fechadas'          => $resumo['fechadas'],
-                'reposicoes'        => $resumo['reposicoes'],
+                'vinculos'          => $funilCoorte['vinculos'],
+                'com_retorno'       => $funilCoorte['com_retorno'],
+                'aguardando'        => $funilCoorte['vinculos'] - $funilCoorte['com_retorno'],
+                'reprovados'        => $funilCoorte['reprovados'],
+                'desistiu'          => $funilCoorte['desistiu'],
+                'fechadas'          => $funilCoorte['fechadas'],
+                'reposicoes'        => $funilCoorte['reposicoes'],
             ],
             // Período que a coluna "vs" do ranking de unidades compara
             'comparacao'       => $anterior ? [
@@ -196,7 +214,7 @@ class AdminDesempenhoRedeController extends Controller
         return [[$de->copy()->subDays($dias), $final]];
     }
 
-    private function aplicarPeriodo($query, string $coluna, ?array $intervalos): void
+    private function aplicarPeriodo($query, $coluna, ?array $intervalos): void
     {
         if ($intervalos === null) {
             return;
@@ -238,6 +256,48 @@ class AdminDesempenhoRedeController extends Controller
         $this->filtrosDaVaga($query, $request, 'v.');
 
         return $query;
+    }
+
+    /** Junta a data da aprovação (primeira linha "aprovado" do histórico) como ap.aprovado_em. */
+    private function comAprovacao($query)
+    {
+        if ($this->dataAprovacao === 'e.updated_at') {
+            return $query;
+        }
+        $aprovacoes = DB::table('envio_status_historico')
+            ->where('status_novo', 'aprovado')
+            ->groupBy('envio_id')
+            ->selectRaw('envio_id, MIN(ocorrido_em) as aprovado_em');
+
+        return $query->leftJoinSub($aprovacoes, 'ap', 'ap.envio_id', '=', 'e.id');
+    }
+
+    /** Contratações (aprovado ou reposição) APROVADAS no período, com os filtros. */
+    private function baseContratacoes(Request $request, ?array $periodo)
+    {
+        $q = $this->comAprovacao($this->baseEnvios($request))->whereRaw(self::FECHADAS);
+        $this->aplicarPeriodo($q, DB::raw($this->dataAprovacao), $periodo);
+        return $q;
+    }
+
+    /**
+     * Troca fechadas, reposições e conversão do resumo pelas contratações
+     * aprovadas no período. Conversão = aprovados no período ÷ vínculos do
+     * período, como o cliente mede.
+     */
+    private function comContratacoes(array $resumo, Request $request, ?array $intervalos): array
+    {
+        $r = $this->baseContratacoes($request, $intervalos)
+            ->selectRaw('COUNT(*) as fechadas')
+            ->selectRaw("SUM(e.status = 'reposicao') as reposicoes")
+            ->first();
+
+        $fechadas = (int) $r->fechadas;
+        return array_merge($resumo, [
+            'fechadas'   => $fechadas,
+            'reposicoes' => (int) $r->reposicoes,
+            'conversao'  => $resumo['vinculos'] ? round($fechadas / $resumo['vinculos'] * 100, 1) : null,
+        ]);
     }
 
     /**
@@ -377,13 +437,19 @@ class AdminDesempenhoRedeController extends Controller
 
     private function rankingUnidades(Request $request, ?array $intervalos, ?array $anterior): array
     {
+        // Vínculos pela data do vínculo; fechadas pela data da aprovação
         $porUnidade = function (?array $periodo) use ($request) {
             $q = $this->baseEnvios($request)->whereNotNull('e.franquia_id');
             $this->aplicarPeriodo($q, 'e.created_at', $periodo);
-            return $q->groupBy('e.franquia_id')
-                ->selectRaw('e.franquia_id, COUNT(*) as vinculos, SUM(' . self::FECHADAS . ') as fechadas')
-                ->get()
-                ->keyBy('franquia_id');
+            $vinculos = $q->groupBy('e.franquia_id')->selectRaw('e.franquia_id, COUNT(*) as n')->pluck('n', 'franquia_id');
+
+            $fechadas = $this->baseContratacoes($request, $periodo)->whereNotNull('e.franquia_id')
+                ->groupBy('e.franquia_id')->selectRaw('e.franquia_id, COUNT(*) as n')->pluck('n', 'franquia_id');
+
+            return $vinculos->keys()->merge($fechadas->keys())->unique()->mapWithKeys(fn($id) => [$id => (object) [
+                'vinculos' => (int) ($vinculos[$id] ?? 0),
+                'fechadas' => (int) ($fechadas[$id] ?? 0),
+            ]]);
         };
 
         $atual = $porUnidade($intervalos);
@@ -417,12 +483,16 @@ class AdminDesempenhoRedeController extends Controller
 
     private function rankingEmpresas(Request $request, ?array $intervalos): array
     {
+        // Vínculos pela data do vínculo; fechadas pela data da aprovação
         $q = $this->baseEnvios($request);
         $this->aplicarPeriodo($q, 'e.created_at', $intervalos);
-        $porEmpresa = $q->groupBy('v.empresa_id')
-            ->selectRaw('v.empresa_id, COUNT(*) as vinculos, SUM(' . self::FECHADAS . ') as fechadas')
-            ->get()
-            ->keyBy('empresa_id');
+        $vinc = $q->groupBy('v.empresa_id')->selectRaw('v.empresa_id, COUNT(*) as n')->pluck('n', 'empresa_id');
+        $fech = $this->baseContratacoes($request, $intervalos)
+            ->groupBy('v.empresa_id')->selectRaw('v.empresa_id, COUNT(*) as n')->pluck('n', 'empresa_id');
+        $porEmpresa = $vinc->keys()->merge($fech->keys())->unique()->mapWithKeys(fn($id) => [$id => (object) [
+            'vinculos' => (int) ($vinc[$id] ?? 0),
+            'fechadas' => (int) ($fech[$id] ?? 0),
+        ]]);
 
         $vagasQ = Vaga::query()
             ->when($this->ids($request, 'empresa_ids'), fn($q, $ids) => $q->whereIn('empresa_id', $ids));
@@ -495,11 +565,7 @@ class AdminDesempenhoRedeController extends Controller
     private function financeiro(Request $request, ?array $intervalos, ?array $anterior, int $anoEvolucao): array
     {
         $valores = app(ValoresColocacoes::class);
-        $doPeriodo = function (?array $periodo) use ($request, $valores) {
-            $q = $this->baseEnvios($request);
-            $this->aplicarPeriodo($q, 'e.created_at', $periodo);
-            return $valores->calcular($q);
-        };
+        $doPeriodo = fn(?array $periodo) => $valores->calcular($this->baseContratacoes($request, $periodo), $this->dataAprovacao);
 
         $atual = $doPeriodo($intervalos);
         $antes = $anterior ? $doPeriodo($anterior) : null;
@@ -509,13 +575,16 @@ class AdminDesempenhoRedeController extends Controller
         $hoje = now()->toDateString();
         $em7  = now()->addDays(7)->toDateString();
         $garantia = $valores->calcular(
-            $this->baseEnvios($request)->where('e.status', 'aprovado')
+            $this->comAprovacao($this->baseEnvios($request))->where('e.status', 'aprovado')
                 ->whereNotNull('e.data_admissao')
-                ->where('e.data_admissao', '>=', now()->subYear()->toDateString())
+                ->where('e.data_admissao', '>=', now()->subYear()->toDateString()),
+            $this->dataAprovacao,
         )->filter(fn($c) => $c['garantia_ate'] && $c['garantia_ate'] >= $hoje);
 
-        $porMes = $valores->calcular($this->baseEnvios($request)->whereYear('e.created_at', $anoEvolucao))
-            ->groupBy(fn($c) => $c['criado_em']->month)
+        $porMes = $valores->calcular($this->baseContratacoes($request, [[
+            Carbon::create($anoEvolucao)->startOfYear(), Carbon::create($anoEvolucao)->endOfYear(),
+        ]]), $this->dataAprovacao)
+            ->groupBy(fn($c) => $c['aprovado_em']->month)
             ->map(fn($doMes) => $doMes->groupBy('grupo')->map(fn($g) => $g->sum('faturado'))->all())
             ->all();
 
@@ -635,23 +704,31 @@ class AdminDesempenhoRedeController extends Controller
             ->selectRaw('MONTH(e.created_at) as mes')
             ->selectRaw(self::GRUPO . ' as tipo')
             ->selectRaw('COUNT(*) as vinculos')
-            ->selectRaw('SUM(' . self::FECHADAS . ') as fechadas')
             ->groupByRaw('MONTH(e.created_at), ' . self::GRUPO)
+            ->get();
+
+        // Fechadas pelo mês em que foram aprovadas
+        $fechadas = $this->baseContratacoes($request, [[Carbon::create($ano)->startOfYear(), Carbon::create($ano)->endOfYear()]])
+            ->selectRaw("MONTH({$this->dataAprovacao}) as mes")
+            ->selectRaw(self::GRUPO . ' as tipo')
+            ->selectRaw('COUNT(*) as fechadas')
+            ->groupByRaw("MONTH({$this->dataAprovacao}), " . self::GRUPO)
             ->get();
 
         $meses = [];
         for ($m = 1; $m <= 12; $m++) {
             $doMes = $linhas->where('mes', $m);
+            $fechMes = $fechadas->where('mes', $m);
             $porTipo = fn($t) => [
                 'vinculos'    => (int) $doMes->where('tipo', $t)->sum('vinculos'),
-                'fechadas'    => (int) $doMes->where('tipo', $t)->sum('fechadas'),
+                'fechadas'    => (int) $fechMes->where('tipo', $t)->sum('fechadas'),
                 'faturamento' => round($faturamento[$m][$t] ?? 0, 2),
             ];
             $meses[] = [
                 'mes'         => $m,
                 ...collect(self::GRUPOS)->mapWithKeys(fn($t) => [$t => $porTipo($t)])->all(),
                 'vinculos'    => (int) $doMes->sum('vinculos'),
-                'fechadas'    => (int) $doMes->sum('fechadas'),
+                'fechadas'    => (int) $fechMes->sum('fechadas'),
                 'faturamento' => round(array_sum($faturamento[$m] ?? []), 2),
             ];
         }
