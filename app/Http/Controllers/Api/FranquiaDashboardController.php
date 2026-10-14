@@ -11,6 +11,7 @@ use App\Models\Franquia;
 use App\Models\FranquiaChamado;
 use App\Models\MetaFranquia;
 use App\Models\Vaga;
+use App\Services\Financeiro\ValoresColocacoes;
 use Illuminate\Http\Request;
 
 class FranquiaDashboardController extends Controller
@@ -92,13 +93,7 @@ class FranquiaDashboardController extends Controller
             ->where('status', 'ativa')
             ->get();
 
-        $metas->transform(function ($meta) use ($totalRecebido) {
-            $isMoeda = !$meta->tipoMeta || $meta->tipoMeta->unidade === 'moeda';
-            if ($isMoeda) {
-                $meta->valor_atual = $totalRecebido;
-            }
-            return $meta;
-        });
+        app(ValoresColocacoes::class)->aplicarValorAtualMetas($metas);
 
         return response()->json([
             'data' => [

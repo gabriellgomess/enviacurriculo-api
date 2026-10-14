@@ -9,6 +9,7 @@ use App\Models\FranquiaOnboardingItem;
 use App\Models\FranquiaOnboardingProgresso;
 use App\Models\MetaFranquia;
 use App\Models\TipoMeta;
+use App\Services\Financeiro\ValoresColocacoes;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -65,19 +66,9 @@ class AdminGestaoFranquiasController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
-        // Valor atual automático (faturamento bruto da franquia) para metas em moeda
-        $faturadoPorFranquia = DB::table('franquia_contas_receber')
-            ->select('franquia_id', DB::raw('COALESCE(SUM(valor_bruto),0) as total'))
-            ->groupBy('franquia_id')
-            ->pluck('total', 'franquia_id');
-
-        $metas->transform(function ($meta) use ($faturadoPorFranquia) {
-            $isMoeda = !$meta->tipoMeta || $meta->tipoMeta->unidade === 'moeda';
-            if ($isMoeda) {
-                $meta->valor_atual = (float) ($faturadoPorFranquia[$meta->franquia_id] ?? 0);
-            }
-            return $meta;
-        });
+        // Calcula o valor atual dinamicamente pelo mesmo cálculo do Desempenho da Rede
+        // (realizado + estimado da unidade entre data_inicio e data_fim da meta)
+        app(ValoresColocacoes::class)->aplicarValorAtualMetas($metas);
 
         return response()->json($metas);
     }
@@ -87,15 +78,19 @@ class AdminGestaoFranquiasController extends Controller
         $data = $this->validateMeta($request);
 
         $meta = MetaFranquia::create($data);
+        $meta->load(['franquia:id,nome,codigo', 'tipoMeta:id,nome,unidade']);
+        app(ValoresColocacoes::class)->aplicarValorAtualMetas(collect([$meta]));
 
-        return response()->json($meta->load(['franquia:id,nome,codigo', 'tipoMeta:id,nome,unidade']), 201);
+        return response()->json($meta, 201);
     }
 
     public function updateMeta(Request $request, MetaFranquia $meta)
     {
         $meta->update($this->validateMeta($request));
+        $meta->load(['franquia:id,nome,codigo', 'tipoMeta:id,nome,unidade']);
+        app(ValoresColocacoes::class)->aplicarValorAtualMetas(collect([$meta]));
 
-        return response()->json($meta->load(['franquia:id,nome,codigo', 'tipoMeta:id,nome,unidade']));
+        return response()->json($meta);
     }
 
     public function destroyMeta(MetaFranquia $meta)

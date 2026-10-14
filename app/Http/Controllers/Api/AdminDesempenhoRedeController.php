@@ -751,8 +751,8 @@ class AdminDesempenhoRedeController extends Controller
     private function metasEmDinheiro(?array $intervalos): array
     {
         $q = DB::table('metas_franquias as m')
-            ->join('tipos_metas as t', 't.id', '=', 'm.tipo_meta_id')
-            ->where('t.unidade', 'moeda')
+            ->leftJoin('tipos_metas as t', 't.id', '=', 'm.tipo_meta_id')
+            ->where(fn($w) => $w->whereNull('m.tipo_meta_id')->orWhere('t.unidade', 'moeda'))
             ->whereIn('m.status', ['ativa', 'concluida']);
 
         if ($intervalos) {

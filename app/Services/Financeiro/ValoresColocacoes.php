@@ -5,6 +5,7 @@ namespace App\Services\Financeiro;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Calcula os valores das colocações (vínculos aprovados ou em reposição) de
@@ -85,5 +86,97 @@ class ValoresColocacoes
                 'garantia_ate'     => $garantiaAte,
             ];
         })->values();
+    }
+
+    /**
+     * Preenche o valor_atual das metas em moeda fornecidas, calculando o
+     * faturamento realizado (admissão) + estimado (sem admissão) da franquia
+     * entre a data_inicio e data_fim de cada meta — exatamente o mesmo cálculo
+     * usado no Desempenho da Rede.
+     *
+     * @param iterable $metas Coleção ou array de MetaFranquia
+     * @return iterable
+     */
+    public function aplicarValorAtualMetas(iterable $metas): iterable
+    {
+        $lista = $metas instanceof Collection ? $metas : collect($metas);
+        $moedaMetas = $lista->filter(fn($m) => !$m->tipoMeta || $m->tipoMeta->unidade === 'moeda');
+
+        if ($moedaMetas->isEmpty()) {
+            return $metas;
+        }
+
+        $franquiaIds = $moedaMetas->pluck('franquia_id')->filter()->unique()->map(fn($id) => (int) $id)->values()->all();
+        if (empty($franquiaIds)) {
+            return $metas;
+        }
+
+        $dataAprovacao = Schema::hasTable('envio_status_historico')
+            ? 'COALESCE(ap.aprovado_em, e.updated_at)'
+            : 'e.updated_at';
+
+        $estimadoDesde  = Carbon::parse(config('financeiro.estimado_desde', '2026-09-01'))->toDateString();
+        $hoje           = now()->toDateString();
+        $dataReferencia = "COALESCE(e.data_admissao, CASE WHEN e.status = 'aprovado' "
+            . "AND {$dataAprovacao} >= '{$estimadoDesde}' THEN DATE '{$hoje}' END)";
+
+        $q = DB::table('envios as e')
+            ->join('vagas as v', 'v.id', '=', 'e.vaga_id')
+            ->leftJoin('franquias as f', 'f.id', '=', 'e.franquia_id')
+            ->whereNull('v.deleted_at')
+            ->whereIn('e.franquia_id', $franquiaIds)
+            ->whereRaw("e.status IN ('aprovado','reposicao')")
+            ->whereRaw("{$dataReferencia} IS NOT NULL");
+
+        if ($dataAprovacao !== 'e.updated_at') {
+            $ap = DB::table('envio_status_historico')
+                ->where('status_novo', 'aprovado')
+                ->groupBy('envio_id')
+                ->selectRaw('envio_id, MIN(ocorrido_em) as aprovado_em');
+            $q->leftJoinSub($ap, 'ap', 'ap.envio_id', '=', 'e.id');
+        }
+
+        $colocacoes  = $this->calcular($q, $dataAprovacao, $dataReferencia);
+        $porFranquia = $colocacoes->groupBy(fn($c) => (int) $c['produtora_id']);
+
+        foreach ($moedaMetas as $meta) {
+            $ini = $meta->data_inicio ? Carbon::parse($meta->data_inicio)->format('Y-m-d') : null;
+            $fim = $meta->data_fim ? Carbon::parse($meta->data_fim)->format('Y-m-d') : null;
+
+            $itens = $porFranquia->get((int) $meta->franquia_id) ?? collect();
+
+            $total = $itens->filter(function ($c) use ($ini, $fim) {
+                if (!$c['referencia']) {
+                    return false;
+                }
+                $ref = $c['referencia']->format('Y-m-d');
+                if ($ini !== null && $ref < $ini) {
+                    return false;
+                }
+                if ($fim !== null && $ref > $fim) {
+                    return false;
+                }
+                return true;
+            })->sum('faturado');
+
+            $meta->valor_atual = round($total, 2);
+        }
+
+        return $metas;
+    }
+
+    /**
+     * Calcula o faturamento total (realizado + estimado) de uma franquia específica
+     * em um período de referência [início, fim].
+     */
+    public function calcularFaturamentoFranquia(int $franquiaId, ?string $dataInicio = null, ?string $dataFim = null): float
+    {
+        $metaMock = new \App\Models\MetaFranquia([
+            'franquia_id' => $franquiaId,
+            'data_inicio' => $dataInicio,
+            'data_fim'    => $dataFim,
+        ]);
+        $this->aplicarValorAtualMetas(collect([$metaMock]));
+        return (float) ($metaMock->valor_atual ?? 0.0);
     }
 }
