@@ -678,11 +678,7 @@ class CandidatoController extends Controller
             // Mesmo processo seletivo: reflete no painel da empresa
             'status_empresa' => \App\Models\Envio::statusEmpresaPara($status),
         ]);
-        foreach (['observacao', 'salario_aprovado', 'tipo_contrato', 'data_admissao', 'data_saida'] as $campo) {
-            if (array_key_exists($campo, $data)) {
-                $envio->{$campo} = $data[$campo];
-            }
-        }
+        $envio->preencherCamposDoStatus($data);
         $envio->save();
 
         return response()->json(['message' => 'Status atualizado.', 'status' => $envio->status]);

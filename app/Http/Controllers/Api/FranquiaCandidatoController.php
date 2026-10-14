@@ -1122,11 +1122,7 @@ class FranquiaCandidatoController extends Controller
             // Mesmo processo seletivo: reflete no painel da empresa
             'status_empresa' => Envio::statusEmpresaPara($status),
         ]);
-        foreach (['observacao', 'salario_aprovado', 'tipo_contrato', 'data_admissao', 'data_saida'] as $campo) {
-            if (array_key_exists($campo, $data)) {
-                $envio->{$campo} = $data[$campo];
-            }
-        }
+        $envio->preencherCamposDoStatus($data);
         // Aprovar NÃO preenche a data de admissão sozinho. Antes, quando o
         // campo vinha em branco, o sistema gravava a data de hoje — o que
         // registra uma admissão que ainda não foi combinada. Em branco é uma

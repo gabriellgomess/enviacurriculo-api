@@ -112,11 +112,7 @@ class EmpresaCandidatoRecebidoController extends Controller
         ]);
 
         // Demais campos apenas quando enviados — mesma regra do painel da franquia
-        foreach (['observacao', 'salario_aprovado', 'tipo_contrato', 'data_admissao', 'data_saida'] as $campo) {
-            if (array_key_exists($campo, $data)) {
-                $envio->{$campo} = $data[$campo];
-            }
-        }
+        $envio->preencherCamposDoStatus($data);
 
         // Aprovar NÃO preenche a data de admissão sozinho — mesma regra do
         // painel da franquia. Deixar em branco significa "data a definir", e

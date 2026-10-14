@@ -28,6 +28,8 @@ use Illuminate\Support\Facades\Schema;
  *    Só entram aprovações a partir de config('financeiro.estimado_desde');
  *    as mais antigas sem admissão ficam fora da tela.
  *  - Faturamento estimado no mês = faturamento + estimado.
+ *  - Reposição: conta no mês em que aconteceu (data de saída); a contratação
+ *    segue no faturamento do mês da admissão.
  *  - Conversão: fechadas (admitidos) do período ÷ vínculos do período.
  *  - O funil e as situações acompanham os vínculos CRIADOS no período.
  *  - Envio: vínculo encaminhado por uma franquia. Sem franquia, o vínculo é
@@ -319,6 +321,30 @@ class AdminDesempenhoRedeController extends Controller
     }
 
     /**
+     * Reposições que ACONTECERAM no período, pela data de saída do candidato
+     * (combinado com o cliente em out/2026). O faturamento da contratação
+     * continua no mês da admissão. Sem data de saída: a data em que o status
+     * virou reposição no histórico; sem histórico, a última alteração.
+     */
+    private function baseReposicoes(Request $request, ?array $periodo)
+    {
+        $q = $this->comAprovacao($this->baseEnvios($request))->where('e.status', 'reposicao');
+
+        $dataReposicao = 'COALESCE(e.data_saida, e.updated_at)';
+        if ($this->dataAprovacao !== 'e.updated_at') {
+            $reposicoes = DB::table('envio_status_historico')
+                ->where('status_novo', 'reposicao')
+                ->groupBy('envio_id')
+                ->selectRaw('envio_id, MIN(ocorrido_em) as reposicao_em');
+            $q->leftJoinSub($reposicoes, 'rp', 'rp.envio_id', '=', 'e.id');
+            $dataReposicao = 'COALESCE(e.data_saida, rp.reposicao_em, e.updated_at)';
+        }
+
+        $this->aplicarPeriodo($q, DB::raw("CAST({$dataReposicao} AS DATETIME)"), $periodo);
+        return $q;
+    }
+
+    /**
      * Troca fechadas, reposições e conversão do resumo pelas contratações do
      * período: fechadas = admitidos no período; aguardando_admissao = os
      * estimados. Conversão = fechadas ÷ vínculos do período.
@@ -328,14 +354,13 @@ class AdminDesempenhoRedeController extends Controller
         $r = $this->baseContratacoes($request, $intervalos)
             ->selectRaw('SUM(e.data_admissao IS NOT NULL) as fechadas')
             ->selectRaw('SUM(e.data_admissao IS NULL) as aguardando')
-            ->selectRaw("SUM(e.status = 'reposicao') as reposicoes")
             ->first();
 
         $fechadas = (int) $r->fechadas;
         return array_merge($resumo, [
             'fechadas'            => $fechadas,
             'aguardando_admissao' => (int) $r->aguardando,
-            'reposicoes'          => (int) $r->reposicoes,
+            'reposicoes'          => $this->baseReposicoes($request, $intervalos)->count(),
             'conversao'           => $resumo['vinculos'] ? round($fechadas / $resumo['vinculos'] * 100, 1) : null,
         ]);
     }
@@ -678,7 +703,11 @@ class AdminDesempenhoRedeController extends Controller
                     'premium' => round(collect($metas)->filter(fn($v, $id) => ($tipoDe[$id] ?? null) === 'premium')->sum(), 2),
                     'start'   => round(collect($metas)->filter(fn($v, $id) => ($tipoDe[$id] ?? null) === 'start')->sum(), 2),
                 ],
-                'reposicoes_comissao'  => round($atual->where('status', 'reposicao')->sum('comissoes'), 2),
+                // Comissão bruta das unidades nas reposições do período (pela data
+                // de saída) — o que será debitado do franqueado no Financeiro
+                'reposicoes_comissao'  => round($valores->calcular(
+                    $this->baseReposicoes($request, $intervalos), $this->dataAprovacao, $this->dataReferencia
+                )->sum('comissoes'), 2),
                 'garantia'             => [
                     'total'      => $garantia->count(),
                     'comissoes'  => round($garantia->sum('comissoes'), 2),

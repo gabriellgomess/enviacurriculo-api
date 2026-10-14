@@ -73,6 +73,32 @@ class Envio extends Model
         };
     }
 
+    /** Dados da contratação que uma reposição não apaga. */
+    public const DADOS_CONTRATACAO = ['salario_aprovado', 'tipo_contrato', 'data_admissao'];
+
+    /**
+     * Grava os campos que acompanham a troca de status (os que vieram na
+     * requisição). Chamar depois de definir o status novo.
+     *
+     * Reposição: o candidato foi contratado e saiu na garantia. Salário,
+     * contrato e admissão continuam valendo — o faturamento fica no mês da
+     * admissão e a reposição conta pela data de saída. As telas mandam esses
+     * campos em branco fora do status Aprovado, e isso apagava a contratação
+     * (out/2026: todas as reposições estavam sem admissão e sem salário).
+     */
+    public function preencherCamposDoStatus(array $data): void
+    {
+        foreach (['observacao', 'salario_aprovado', 'tipo_contrato', 'data_admissao', 'data_saida'] as $campo) {
+            if (!array_key_exists($campo, $data)) {
+                continue;
+            }
+            if ($this->status === 'reposicao' && $data[$campo] === null && in_array($campo, self::DADOS_CONTRATACAO, true)) {
+                continue;
+            }
+            $this->{$campo} = $data[$campo];
+        }
+    }
+
     public function kanbanEtapa()
     {
         return $this->belongsTo(KanbanEtapa::class);
