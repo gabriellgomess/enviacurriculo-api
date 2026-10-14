@@ -462,6 +462,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Indicadores — Desempenho da Rede
         Route::get('indicadores/desempenho-rede', [\App\Http\Controllers\Api\AdminDesempenhoRedeController::class, 'index']);
+        Route::get('indicadores/desempenho-rede/detalhes', [\App\Http\Controllers\Api\AdminDesempenhoRedeController::class, 'detalhes']);
     });
 
     /*

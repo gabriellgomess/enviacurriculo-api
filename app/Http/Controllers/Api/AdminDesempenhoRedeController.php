@@ -97,6 +97,7 @@ class AdminDesempenhoRedeController extends Controller
             'franquia_ids.*'  => 'integer',
             'empresa_ids'     => 'nullable|array',
             'empresa_ids.*'   => 'integer',
+            'empresa_status'  => 'nullable|in:todas,ativas,inativas',
             'tipo'            => 'nullable|in:premium,start',
             'origens'         => 'nullable|array',
             'origens.*'       => 'in:' . implode(',', array_keys(self::ORIGENS)),
@@ -149,6 +150,10 @@ class AdminDesempenhoRedeController extends Controller
             ],
             'resumo'           => $resumo,
             'vinculos_janelas' => $this->janelas($request),
+            'vinculos_ano'     => [
+                'ano'   => $anoEvolucao,
+                'total' => (clone $this->baseEnvios($request))->whereYear('e.created_at', $anoEvolucao)->count(),
+            ],
             'situacoes'        => $this->situacoes($request, $intervalos),
             'funil'            => [
                 // Vagas que receberam vínculo no período: base do "vínculos por vaga"
@@ -377,11 +382,21 @@ class AdminDesempenhoRedeController extends Controller
         if ($ids = $this->ids($request, 'nivel_ids')) {
             $query->whereIn($prefixo . 'nivel_vaga_id', $ids);
         }
+        if ($request->filled('empresa_status') && in_array($request->empresa_status, ['ativas', 'inativas'], true)) {
+            $ativo = $request->empresa_status === 'ativas';
+            $query->whereExists(function ($sub) use ($prefixo, $ativo) {
+                $sub->select(DB::raw(1))
+                    ->from('empresas as emp_status_filtro')
+                    ->whereColumn('emp_status_filtro.id', '=', $prefixo . 'empresa_id')
+                    ->where('emp_status_filtro.active', $ativo)
+                    ->whereNull('emp_status_filtro.deleted_at');
+            });
+        }
     }
 
     /**
      * Algum filtro além de período e empresa (quem encaminhou, tipo, origem,
-     * unidade dona, nível)? Com eles, a lista de empresas se limita às que
+     * unidade dona, nível, status da empresa)? Com eles, a lista de empresas se limita às que
      * tiveram vínculo filtrado — senão viria cheia de linhas zeradas.
      */
     private function filtraVinculos(Request $request): bool
@@ -390,7 +405,8 @@ class AdminDesempenhoRedeController extends Controller
             || $request->filled('tipo')
             || (bool) $request->input('origens')
             || (bool) $this->ids($request, 'dona_ids')
-            || (bool) $this->ids($request, 'nivel_ids');
+            || (bool) $this->ids($request, 'nivel_ids')
+            || ($request->filled('empresa_status') && $request->empresa_status !== 'todas');
     }
 
     /* ─── Seções ─────────────────────────────────────────────────────── */
@@ -454,6 +470,7 @@ class AdminDesempenhoRedeController extends Controller
         $this->aplicarPeriodo($q, 'e.created_at', $intervalos);
 
         $linhas = $q->selectRaw(self::GRUPO . ' as tipo')
+            ->selectRaw('COUNT(*) as total')
             ->selectRaw('SUM(' . self::PENDENTES . ') as pendentes')
             ->selectRaw('SUM(' . self::EM_PROCESSO . ') as em_processo')
             ->selectRaw("SUM(e.status = 'desistiu') as desistiu")
@@ -464,7 +481,7 @@ class AdminDesempenhoRedeController extends Controller
             ->get()
             ->keyBy('tipo');
 
-        $vazio = ['pendentes' => 0, 'em_processo' => 0, 'desistiu' => 0, 'reprovados' => 0, 'aprovados' => 0];
+        $vazio = ['total' => 0, 'pendentes' => 0, 'em_processo' => 0, 'desistiu' => 0, 'reprovados' => 0, 'aprovados' => 0];
 
         return collect(self::GRUPOS)->mapWithKeys(fn($t) => [
             $t => isset($linhas[$t])
@@ -583,13 +600,13 @@ class AdminDesempenhoRedeController extends Controller
             ->selectRaw('v.empresa_id, MAX(COALESCE(e.data_admissao, DATE(e.updated_at))) as ultima')
             ->pluck('ultima', 'empresa_id');
 
-        // Ativas, mais as inativas que tiveram vínculo no período: sem isso a
-        // tabela escondia empresas que somam nos totais (em produção, 164
-        // inativas com 2.273 vínculos e 135 fechadas).
+        $statusEmp = $request->input('empresa_status');
         $empresas = DB::table('empresas as emp')
             ->leftJoin('franquias as fr', 'fr.id', '=', 'emp.franquia_id')
             ->whereNull('emp.deleted_at')
-            ->where(fn($w) => $w->where('emp.active', true)->orWhereIn('emp.id', $porEmpresa->keys()))
+            ->when($statusEmp === 'ativas', fn($q) => $q->where('emp.active', true))
+            ->when($statusEmp === 'inativas', fn($q) => $q->where('emp.active', false))
+            ->when(!$statusEmp || $statusEmp === 'todas', fn($q) => $q->where(fn($w) => $w->where('emp.active', true)->orWhereIn('emp.id', $porEmpresa->keys())))
             ->when($this->ids($request, 'empresa_ids'), fn($q, $ids) => $q->whereIn('emp.id', $ids))
             // Filtrando por unidade, só interessam as empresas em que ela produziu
             ->when($this->filtraVinculos($request), fn($q) => $q->whereIn('emp.id', $porEmpresa->keys()))
@@ -875,5 +892,171 @@ class AdminDesempenhoRedeController extends Controller
             ],
             'reposicoes' => $resumo['reposicoes'],
         ];
+    }
+
+    /**
+     * Retorna listas detalhadas para relatórios (PDF / Excel) específicos de cards.
+     * tipo_detalhe: colocacoes | reposicoes | vinculos
+     */
+    public function detalhes(Request $request)
+    {
+        $request->validate([
+            'tipo_detalhe'    => 'required|in:colocacoes,reposicoes,vinculos',
+            'de'              => 'nullable|date',
+            'ate'             => 'nullable|date',
+            'meses'           => 'nullable|array',
+            'meses.*'         => 'date_format:Y-m',
+            'anos'            => 'nullable|array',
+            'anos.*'          => 'integer|min:2000|max:2100',
+            'franquia_ids'    => 'nullable|array',
+            'franquia_ids.*'  => 'integer',
+            'empresa_ids'     => 'nullable|array',
+            'empresa_ids.*'   => 'integer',
+            'empresa_status'  => 'nullable|in:todas,ativas,inativas',
+            'tipo'            => 'nullable|in:premium,start',
+            'origens'         => 'nullable|array',
+            'origens.*'       => 'in:' . implode(',', array_keys(self::ORIGENS)),
+            'dona_ids'        => 'nullable|array',
+            'dona_ids.*'      => 'integer',
+            'nivel_ids'       => 'nullable|array',
+            'nivel_ids.*'     => 'integer',
+        ]);
+
+        $intervalos = $this->intervalos($request);
+
+        $this->dataAprovacao = Schema::hasTable('envio_status_historico')
+            ? 'COALESCE(ap.aprovado_em, e.updated_at)'
+            : 'e.updated_at';
+
+        $this->estimadoDesde  = Carbon::parse(config('financeiro.estimado_desde', '2026-09-01'))->toDateString();
+        $hoje                 = now()->toDateString();
+        $this->dataReferencia = "COALESCE(e.data_admissao, CASE WHEN e.status = 'aprovado' "
+            . "AND {$this->dataAprovacao} >= '{$this->estimadoDesde}' THEN DATE '{$hoje}' END)";
+
+        $tipo = $request->input('tipo_detalhe');
+
+        if ($tipo === 'colocacoes') {
+            $valores = app(ValoresColocacoes::class);
+            $colocacoesCalculadas = $valores->calcular(
+                $this->baseContratacoes($request, $intervalos),
+                $this->dataAprovacao,
+                $this->dataReferencia
+            )->keyBy('id');
+
+            $itens = DB::table('envios as e')
+                ->whereIn('e.id', $colocacoesCalculadas->keys())
+                ->join('vagas as v', 'v.id', '=', 'e.vaga_id')
+                ->join('empresas as emp', 'emp.id', '=', 'v.empresa_id')
+                ->leftJoin('candidatos as c', 'c.id', '=', 'e.candidato_id')
+                ->leftJoin('franquias as f', 'f.id', '=', 'e.franquia_id')
+                ->select([
+                    'e.id', 'e.status', 'e.data_admissao', 'e.salario_aprovado',
+                    'c.nome as candidato_nome', 'c.telefone as candidato_telefone',
+                    'v.titulo as vaga_titulo', 'v.codigo as vaga_codigo', 'v.taxa_servico',
+                    'emp.razao_social as empresa_razao', 'emp.nome_fantasia as empresa_fantasia',
+                    'f.nome as franquia_nome', 'f.tipo as franquia_tipo',
+                ])
+                ->get()
+                ->map(function ($row) use ($colocacoesCalculadas) {
+                    $calc = $colocacoesCalculadas[$row->id] ?? null;
+                    return [
+                        'id'             => $row->id,
+                        'candidato'      => $row->candidato_nome ?: 'Não informado',
+                        'telefone'       => $row->candidato_telefone ?: '',
+                        'vaga'           => $row->vaga_titulo ?: ($row->vaga_codigo ? "Vaga #{$row->vaga_codigo}" : '—'),
+                        'empresa'        => $row->empresa_fantasia ?: $row->empresa_razao ?: '—',
+                        'unidade'        => $row->franquia_nome ?: 'Feed / Sem unidade',
+                        'tipo_unidade'   => $row->franquia_tipo ?: ($calc['grupo'] ?? '—'),
+                        'salario'        => (float) $row->salario_aprovado,
+                        'faturado'       => (float) ($calc['faturado'] ?? 0),
+                        'data_admissao'  => $row->data_admissao ? Carbon::parse($row->data_admissao)->format('Y-m-d') : null,
+                        'estimado'       => (bool) ($calc['estimado'] ?? false),
+                        'status'         => $row->status,
+                    ];
+                })
+                ->sortByDesc('faturado')
+                ->values();
+
+            return response()->json(['data' => $itens]);
+        }
+
+        if ($tipo === 'reposicoes') {
+            $valores = app(ValoresColocacoes::class);
+            $reposCalculadas = $valores->calcular(
+                $this->baseReposicoes($request, $intervalos),
+                $this->dataAprovacao,
+                $this->dataReferencia
+            )->keyBy('id');
+
+            $itens = DB::table('envios as e')
+                ->whereIn('e.id', $reposCalculadas->keys())
+                ->join('vagas as v', 'v.id', '=', 'e.vaga_id')
+                ->join('empresas as emp', 'emp.id', '=', 'v.empresa_id')
+                ->leftJoin('candidatos as c', 'c.id', '=', 'e.candidato_id')
+                ->leftJoin('franquias as f', 'f.id', '=', 'e.franquia_id')
+                ->select([
+                    'e.id', 'e.status', 'e.data_admissao', 'e.data_saida', 'e.salario_aprovado', 'e.observacao',
+                    'c.nome as candidato_nome',
+                    'v.titulo as vaga_titulo', 'v.codigo as vaga_codigo',
+                    'emp.razao_social as empresa_razao', 'emp.nome_fantasia as empresa_fantasia',
+                    'f.nome as franquia_nome', 'f.tipo as franquia_tipo',
+                ])
+                ->get()
+                ->map(function ($row) use ($reposCalculadas) {
+                    $calc = $reposCalculadas[$row->id] ?? null;
+                    return [
+                        'id'             => $row->id,
+                        'candidato'      => $row->candidato_nome ?: 'Não informado',
+                        'vaga'           => $row->vaga_titulo ?: ($row->vaga_codigo ? "Vaga #{$row->vaga_codigo}" : '—'),
+                        'empresa'        => $row->empresa_fantasia ?: $row->empresa_razao ?: '—',
+                        'unidade'        => $row->franquia_nome ?: 'Feed / Sem unidade',
+                        'tipo_unidade'   => $row->franquia_tipo ?: '—',
+                        'salario'        => (float) $row->salario_aprovado,
+                        'comissoes'      => (float) ($calc['comissoes'] ?? 0),
+                        'data_admissao'  => $row->data_admissao ? Carbon::parse($row->data_admissao)->format('Y-m-d') : null,
+                        'data_saida'     => $row->data_saida ? Carbon::parse($row->data_saida)->format('Y-m-d') : null,
+                        'observacao'     => $row->observacao ?: '',
+                    ];
+                })
+                ->sortByDesc('comissoes')
+                ->values();
+
+            return response()->json(['data' => $itens]);
+        }
+
+        if ($tipo === 'vinculos') {
+            $query = $this->baseEnvios($request);
+            $this->aplicarPeriodo($query, 'e.created_at', $intervalos);
+
+            $itens = $query
+                ->join('empresas as emp', 'emp.id', '=', 'v.empresa_id')
+                ->leftJoin('candidatos as c', 'c.id', '=', 'e.candidato_id')
+                ->select([
+                    'e.id', 'e.status', 'e.origem', 'e.created_at',
+                    'c.nome as candidato_nome',
+                    'v.titulo as vaga_titulo', 'v.codigo as vaga_codigo',
+                    'emp.razao_social as empresa_razao', 'emp.nome_fantasia as empresa_fantasia',
+                    'f.nome as franquia_nome', 'f.tipo as franquia_tipo',
+                ])
+                ->limit(2000)
+                ->get()
+                ->map(function ($row) {
+                    return [
+                        'id'             => $row->id,
+                        'candidato'      => $row->candidato_nome ?: 'Não informado',
+                        'vaga'           => $row->vaga_titulo ?: ($row->vaga_codigo ? "Vaga #{$row->vaga_codigo}" : '—'),
+                        'empresa'        => $row->empresa_fantasia ?: $row->empresa_razao ?: '—',
+                        'unidade'        => $row->franquia_nome ?: 'Feed / Sem unidade',
+                        'tipo_unidade'   => $row->franquia_tipo ?: ($row->origem === 'plataforma' ? 'Feed' : 'Sem unidade'),
+                        'origem'         => $row->origem,
+                        'status'         => $row->status,
+                        'criado_em'      => Carbon::parse($row->created_at)->format('Y-m-d H:i'),
+                    ];
+                });
+
+            return response()->json(['data' => $itens]);
+        }
+
+        return response()->json(['data' => []]);
     }
 }
