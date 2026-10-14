@@ -948,10 +948,11 @@ class AdminDesempenhoRedeController extends Controller
                 ->join('vagas as v', 'v.id', '=', 'e.vaga_id')
                 ->join('empresas as emp', 'emp.id', '=', 'v.empresa_id')
                 ->leftJoin('candidatos as c', 'c.id', '=', 'e.candidato_id')
+                ->leftJoin('users as u', 'u.id', '=', 'c.user_id')
                 ->leftJoin('franquias as f', 'f.id', '=', 'e.franquia_id')
                 ->select([
                     'e.id', 'e.status', 'e.data_admissao', 'e.salario_aprovado',
-                    'c.nome as candidato_nome', 'c.telefone as candidato_telefone',
+                    'u.name as candidato_nome', 'c.telefone as candidato_telefone',
                     'v.titulo as vaga_titulo', 'v.codigo as vaga_codigo', 'v.taxa_servico',
                     'emp.razao_social as empresa_razao', 'emp.nome_fantasia as empresa_fantasia',
                     'f.nome as franquia_nome', 'f.tipo as franquia_tipo',
@@ -993,10 +994,11 @@ class AdminDesempenhoRedeController extends Controller
                 ->join('vagas as v', 'v.id', '=', 'e.vaga_id')
                 ->join('empresas as emp', 'emp.id', '=', 'v.empresa_id')
                 ->leftJoin('candidatos as c', 'c.id', '=', 'e.candidato_id')
+                ->leftJoin('users as u', 'u.id', '=', 'c.user_id')
                 ->leftJoin('franquias as f', 'f.id', '=', 'e.franquia_id')
                 ->select([
                     'e.id', 'e.status', 'e.data_admissao', 'e.data_saida', 'e.salario_aprovado', 'e.observacao',
-                    'c.nome as candidato_nome',
+                    'u.name as candidato_nome',
                     'v.titulo as vaga_titulo', 'v.codigo as vaga_codigo',
                     'emp.razao_social as empresa_razao', 'emp.nome_fantasia as empresa_fantasia',
                     'f.nome as franquia_nome', 'f.tipo as franquia_tipo',
@@ -1031,9 +1033,10 @@ class AdminDesempenhoRedeController extends Controller
             $itens = $query
                 ->join('empresas as emp', 'emp.id', '=', 'v.empresa_id')
                 ->leftJoin('candidatos as c', 'c.id', '=', 'e.candidato_id')
+                ->leftJoin('users as u', 'u.id', '=', 'c.user_id')
                 ->select([
                     'e.id', 'e.status', 'e.origem', 'e.created_at',
-                    'c.nome as candidato_nome',
+                    'u.name as candidato_nome',
                     'v.titulo as vaga_titulo', 'v.codigo as vaga_codigo',
                     'emp.razao_social as empresa_razao', 'emp.nome_fantasia as empresa_fantasia',
                     'f.nome as franquia_nome', 'f.tipo as franquia_tipo',
