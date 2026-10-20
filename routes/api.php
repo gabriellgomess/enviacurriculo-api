@@ -636,6 +636,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('relatorios/processos/usuarios', [\App\Http\Controllers\Api\FranquiaRelatorioProcessoController::class, 'usuarios']);
         Route::get('relatorios-gerenciais/{tipo}', [\App\Http\Controllers\Api\FranquiaRelatorioGerencialController::class, 'show']);
 
+        // Indicadores › Desempenho da Franquia (premium e start, cada uma no seu escopo)
+        Route::get('indicadores/desempenho',          [\App\Http\Controllers\Api\FranquiaDesempenhoController::class, 'index']);
+        Route::get('indicadores/desempenho/detalhes', [\App\Http\Controllers\Api\FranquiaDesempenhoController::class, 'detalhes']);
+
         // Vagas
         Route::get('vagas',                              [FranquiaVagaController::class, 'index']);
         Route::post('vagas',                             [FranquiaVagaController::class, 'store']);

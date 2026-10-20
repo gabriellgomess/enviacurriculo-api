@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\PeriodoDesempenho;
 use App\Http\Controllers\Controller;
 use App\Models\Empresa;
 use App\Models\Franquia;
@@ -10,7 +11,6 @@ use App\Services\Financeiro\ValoresColocacoes;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Desempenho da Rede (Admin) — indicadores operacionais da rede inteira.
@@ -44,7 +44,11 @@ use Illuminate\Support\Facades\Schema;
  */
 class AdminDesempenhoRedeController extends Controller
 {
-    private const FECHADAS    = "e.status IN ('aprovado','reposicao')";
+    // Período e datas de referência (dataAprovacao, dataReferencia,
+    // estimadoDesde) — compartilhado com o Desempenho da Franquia
+    use PeriodoDesempenho;
+
+    private const FECHADAS   = "e.status IN ('aprovado','reposicao')";
     private const PENDENTES   = "e.status IN ('enviado','visualizado','pendente')";
     private const EM_PROCESSO = "e.status IN ('em_processo','em_entrevista')";
     // Já tem decisão (aprovado, reprovado ou desistiu). O funil não usa
@@ -61,23 +65,6 @@ class AdminDesempenhoRedeController extends Controller
         'migracao' => 'migracao',   // trazido do sistema antigo
         'feed'     => 'plataforma', // candidatura feita pelo próprio candidato
     ];
-
-    /**
-     * Data da aprovação de cada contratação. Vem do histórico de status; sem
-     * linha no histórico, a última alteração do vínculo. Definida em index().
-     * Hoje serve só para a data de corte do estimado.
-     */
-    private string $dataAprovacao = 'e.updated_at';
-
-    /**
-     * Data em que a contratação conta: a admissão; sem admissão, hoje (o
-     * estimado, que acompanha o mês corrente) se aprovada a partir da data
-     * de corte; senão NULL — fica fora. Definida em index().
-     */
-    private string $dataReferencia = 'e.data_admissao';
-
-    /** Primeiro dia de aprovação que pode entrar no estimado (Y-m-d). */
-    private string $estimadoDesde = '';
 
     /** Empresa sem contratação há mais que isto entra em "Precisa de atenção". */
     private const DIAS_SEM_FECHAR = 90;
@@ -109,22 +96,9 @@ class AdminDesempenhoRedeController extends Controller
 
         $intervalos = $this->intervalos($request);
         $anterior   = $this->intervaloAnterior($intervalos);
+        $this->prepararDatas();
 
-        // Sem a tabela de histórico (migration ainda não aplicada), a tela
-        // segue funcionando com a última alteração como data da aprovação
-        $this->dataAprovacao = Schema::hasTable('envio_status_historico')
-            ? 'COALESCE(ap.aprovado_em, e.updated_at)'
-            : 'e.updated_at';
-
-        // Datas formatadas pelo Carbon: seguras para ir direto no SQL
-        $this->estimadoDesde  = Carbon::parse(config('financeiro.estimado_desde', '2026-09-01'))->toDateString();
-        $hoje                 = now()->toDateString();
-        // Estimado só para status Aprovado: reposição sem admissão (o candidato
-        // saiu) não é faturamento previsto e fica fora
-        $this->dataReferencia = "COALESCE(e.data_admissao, CASE WHEN e.status = 'aprovado' "
-            . "AND {$this->dataAprovacao} >= '{$this->estimadoDesde}' THEN DATE '{$hoje}' END)";
-
-        $resumo        = $this->resumo($request, $intervalos);
+        $resumo       = $this->resumo($request, $intervalos);
         // O funil acompanha os vínculos do período (coorte); os cards contam
         // as contratações pela data de admissão
         $funilCoorte   = $resumo;
@@ -182,94 +156,7 @@ class AdminDesempenhoRedeController extends Controller
         ]]);
     }
 
-    /* ─── Período ────────────────────────────────────────────────────── */
-
-    /**
-     * Intervalos [início, fim] do filtro de período, ou null para "tudo".
-     * "Meses" e "Anos" podem ser não contíguos (jan + mar, 2024 + 2026),
-     * por isso uma lista.
-     */
-    private function intervalos(Request $request): ?array
-    {
-        $anos = array_filter(array_map('intval', (array) $request->input('anos', [])));
-        if ($anos) {
-            return collect($anos)->unique()->sort()->map(fn($a) => [
-                Carbon::create($a)->startOfYear(),
-                Carbon::create($a)->endOfYear(),
-            ])->values()->all();
-        }
-
-        $meses = array_filter((array) $request->input('meses', []));
-        if ($meses) {
-            return collect($meses)->unique()->sort()->map(function ($m) {
-                $inicio = Carbon::createFromFormat('Y-m-d', "{$m}-01")->startOfDay();
-                return [$inicio, $inicio->copy()->endOfMonth()];
-            })->values()->all();
-        }
-
-        if ($request->filled('de') || $request->filled('ate')) {
-            $de  = $request->filled('de') ? Carbon::parse($request->de)->startOfDay() : Carbon::create(2000);
-            $ate = $request->filled('ate') ? Carbon::parse($request->ate)->endOfDay() : now()->endOfDay();
-            return [[$de, $ate]];
-        }
-
-        return null;
-    }
-
-    /**
-     * Período de comparação da coluna "vs" do ranking (só para um intervalo único).
-     *
-     * Mês e ano voltam um mês / um ano; os demais voltam o próprio tamanho.
-     * Se o período ainda está em andamento, compara só o mesmo trecho: em
-     * 06/10, outubro (1–6) contra 1–6 de setembro, e não contra setembro
-     * inteiro — senão todo mundo aparece em queda no começo do mês.
-     */
-    private function intervaloAnterior(?array $intervalos): ?array
-    {
-        if (!$intervalos || count($intervalos) !== 1) {
-            return null;
-        }
-        [$de, $ate] = $intervalos[0];
-
-        $emAndamento = $ate->isFuture();
-        $fim = $emAndamento ? now()->endOfDay() : $ate;
-
-        $mesInteiro = $de->day === 1 && $ate->isSameDay($de->copy()->endOfMonth());
-        $anoInteiro = $de->dayOfYear === 1 && $ate->isSameDay($de->copy()->endOfYear());
-
-        if ($mesInteiro || $anoInteiro) {
-            $voltar = fn(Carbon $d) => $mesInteiro ? $d->copy()->subMonthNoOverflow() : $d->copy()->subYearNoOverflow();
-            $inicio = $voltar($de);
-            $limite = $mesInteiro ? $inicio->copy()->endOfMonth() : $inicio->copy()->endOfYear();
-            $final  = $emAndamento ? $voltar($fim)->endOfDay()->min($limite) : $limite;
-            return [[$inicio, $final]];
-        }
-
-        // diffInDays devolve fração (fim do dia às 23:59:59): arredonda para baixo
-        $dias  = (int) floor($de->diffInDays($ate)) + 1;
-        $final = $fim->copy()->subDays($dias)->endOfDay()->min($de->copy()->subSecond());
-
-        return [[$de->copy()->subDays($dias), $final]];
-    }
-
-    private function aplicarPeriodo($query, $coluna, ?array $intervalos): void
-    {
-        if ($intervalos === null) {
-            return;
-        }
-        $query->where(function ($w) use ($coluna, $intervalos) {
-            foreach ($intervalos as [$de, $ate]) {
-                $w->orWhereBetween($coluna, [$de, $ate]);
-            }
-        });
-    }
-
     /* ─── Base ───────────────────────────────────────────────────────── */
-
-    private function ids(Request $request, string $campo): array
-    {
-        return array_values(array_filter(array_map('intval', (array) $request->input($campo, []))));
-    }
 
     /** Vínculos com os filtros de empresa e de unidade produtora aplicados. */
     private function baseEnvios(Request $request)
@@ -296,57 +183,20 @@ class AdminDesempenhoRedeController extends Controller
         return $query;
     }
 
-    /** Junta a data da aprovação (primeira linha "aprovado" do histórico) como ap.aprovado_em. */
-    private function comAprovacao($query)
-    {
-        if ($this->dataAprovacao === 'e.updated_at') {
-            return $query;
-        }
-        $aprovacoes = DB::table('envio_status_historico')
-            ->where('status_novo', 'aprovado')
-            ->groupBy('envio_id')
-            ->selectRaw('envio_id, MIN(ocorrido_em) as aprovado_em');
-
-        return $query->leftJoinSub($aprovacoes, 'ap', 'ap.envio_id', '=', 'e.id');
-    }
-
-    /**
-     * Contratações (aprovado ou reposição) que contam no período: admissão no
-     * período, ou estimadas (sem admissão) quando o período inclui hoje.
-     * Separe as duas com e.data_admissao IS NULL.
-     */
+    /** Contratações do período (regra em PeriodoDesempenho::contratacoesDe). */
     private function baseContratacoes(Request $request, ?array $periodo)
     {
-        $q = $this->comAprovacao($this->baseEnvios($request))
-            ->whereRaw(self::FECHADAS)
-            // Aprovação antiga sem admissão: fora de qualquer período
-            ->whereRaw("{$this->dataReferencia} IS NOT NULL");
-        $this->aplicarPeriodo($q, DB::raw($this->dataReferencia), $periodo);
-        return $q;
+        return $this->contratacoesDe($this->baseEnvios($request), $periodo);
     }
 
     /**
      * Reposições que ACONTECERAM no período, pela data de saída do candidato
      * (combinado com o cliente em out/2026). O faturamento da contratação
-     * continua no mês da admissão. Sem data de saída: a data em que o status
-     * virou reposição no histórico; sem histórico, a última alteração.
+     * continua no mês da admissão.
      */
     private function baseReposicoes(Request $request, ?array $periodo)
     {
-        $q = $this->comAprovacao($this->baseEnvios($request))->where('e.status', 'reposicao');
-
-        $dataReposicao = 'COALESCE(e.data_saida, e.updated_at)';
-        if ($this->dataAprovacao !== 'e.updated_at') {
-            $reposicoes = DB::table('envio_status_historico')
-                ->where('status_novo', 'reposicao')
-                ->groupBy('envio_id')
-                ->selectRaw('envio_id, MIN(ocorrido_em) as reposicao_em');
-            $q->leftJoinSub($reposicoes, 'rp', 'rp.envio_id', '=', 'e.id');
-            $dataReposicao = 'COALESCE(e.data_saida, rp.reposicao_em, e.updated_at)';
-        }
-
-        $this->aplicarPeriodo($q, DB::raw("CAST({$dataReposicao} AS DATETIME)"), $periodo);
-        return $q;
+        return $this->reposicoesDe($this->baseEnvios($request), $periodo);
     }
 
     /**
@@ -801,25 +651,6 @@ class AdminDesempenhoRedeController extends Controller
             ->all();
     }
 
-    /** Anos com vínculo registrado, do primeiro até o corrente (opções dos filtros de ano). */
-    private function anosDisponiveis(): array
-    {
-        $primeiro = DB::table('envios')->min('created_at');
-        $inicio = $primeiro ? Carbon::parse($primeiro)->year : now()->year;
-        return range($inicio, now()->year);
-    }
-
-    /**
-     * Vínculos e fechadas por mês de um ano, por tipo. O ano é o escolhido no
-     * próprio gráfico; sem escolha, o último ano do período (ou o corrente).
-     */
-    private function anoEvolucao(Request $request, ?array $intervalos): int
-    {
-        return $request->filled('ano_evolucao')
-            ? (int) $request->ano_evolucao
-            : ($intervalos ? end($intervalos)[1]->year : now()->year);
-    }
-
     /** @param array $faturamento [mes][grupo] => ['faturado' => …, 'estimado' => …] */
     private function evolucao(Request $request, int $ano, array $faturamento): array
     {
@@ -923,15 +754,7 @@ class AdminDesempenhoRedeController extends Controller
         ]);
 
         $intervalos = $this->intervalos($request);
-
-        $this->dataAprovacao = Schema::hasTable('envio_status_historico')
-            ? 'COALESCE(ap.aprovado_em, e.updated_at)'
-            : 'e.updated_at';
-
-        $this->estimadoDesde  = Carbon::parse(config('financeiro.estimado_desde', '2026-09-01'))->toDateString();
-        $hoje                 = now()->toDateString();
-        $this->dataReferencia = "COALESCE(e.data_admissao, CASE WHEN e.status = 'aprovado' "
-            . "AND {$this->dataAprovacao} >= '{$this->estimadoDesde}' THEN DATE '{$hoje}' END)";
+        $this->prepararDatas();
 
         $tipo = $request->input('tipo_detalhe');
 

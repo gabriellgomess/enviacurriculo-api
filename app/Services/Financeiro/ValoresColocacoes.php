@@ -83,6 +83,12 @@ class ValoresColocacoes
                 'faturado'         => $v['faturado'] ?? 0.0,
                 // Comissão bruta das unidades: o que está em jogo numa reposição
                 'comissoes'        => $v ? $v['comissao_produtora']['bruta'] + $v['comissao_dona']['bruta'] : 0.0,
+                // Cada lado separado (líquida = após royalties e marketing): é o
+                // que o Desempenho da Franquia mostra como "minha comissão"
+                'comissao_produtora'      => $v['comissao_produtora']['liquida'] ?? 0.0,
+                'comissao_produtora_perc' => $v['comissao_produtora']['percentual'] ?? null,
+                'comissao_dona'           => $v ? $v['comissao_dona']['liquida'] : 0.0,
+                'comissao_dona_perc'      => $v && $v['comissao_dona']['devida'] ? $v['comissao_dona']['percentual'] : null,
                 'garantia_ate'     => $garantiaAte,
             ];
         })->values();
