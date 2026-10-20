@@ -71,6 +71,7 @@ class FranquiaDesempenhoController extends Controller
             ],
             'cards'          => $this->cards($request, $intervalos, $anterior, $colocacoes, $reposicoes, $resumo),
             'comissoes'      => $this->listaComissoes($colocacoes),
+            'pagas'          => $this->pagas($request, $intervalos),
             'producao_vagas' => $this->premium ? $this->producaoNasMinhasVagas($request, $intervalos, $colocacoes) : [],
             'empresas'       => $empresas,
             'funil'          => $this->funil($request, $intervalos),
@@ -419,6 +420,45 @@ class FranquiaDesempenhoController extends Controller
                 ];
             })
             ->sortByDesc(fn($l) => $l['data_admissao'] ?? '9999')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Comissões já pagas: o "pago" só existe nos lançamentos de Contas a
+     * Receber (o cálculo ao vivo não sabe o que foi pago). Período pelo
+     * vencimento do lançamento; sem vencimento, pelo faturamento.
+     */
+    private function pagas(Request $request, ?array $periodo): array
+    {
+        $q = DB::table('franquia_contas_receber as cr')
+            ->leftJoin('envios as e', 'e.id', '=', 'cr.envio_id')
+            ->leftJoin('vagas as v', 'v.id', '=', 'e.vaga_id')
+            ->where('cr.franquia_id', $this->franquiaId)
+            ->where('cr.status', 'pago');
+
+        if ($ids = $this->ids($request, 'empresa_ids')) {
+            $q->where(fn($w) => $w->whereIn('cr.empresa_id', $ids)->orWhereIn('v.empresa_id', $ids));
+        }
+        $this->aplicarPeriodo($q, DB::raw('COALESCE(cr.data_vencimento, cr.data_faturamento, cr.created_at)'), $periodo);
+
+        return $q->orderByDesc(DB::raw('COALESCE(cr.data_vencimento, cr.data_faturamento, cr.created_at)'))
+            ->get([
+                'cr.id', 'cr.candidato_nome', 'cr.vaga_nome', 'cr.empresa_nome', 'cr.franchise_nome',
+                'cr.valor_bruto', 'cr.comissao_perc', 'cr.valor_liquido', 'cr.data_vencimento', 'cr.data_faturamento',
+            ])
+            ->map(fn($r) => [
+                'id'         => $r->id,
+                'candidato'  => $r->candidato_nome ?: 'Não informado',
+                'vaga'       => $r->vaga_nome ?: '—',
+                'empresa'    => $r->empresa_nome ?: '—',
+                'unidade'    => $r->franchise_nome,
+                'faturado'   => (float) $r->valor_bruto,
+                'perc'       => $r->comissao_perc !== null ? (float) $r->comissao_perc : null,
+                'comissao'   => (float) $r->valor_liquido,
+                'vencimento' => $r->data_vencimento ? Carbon::parse($r->data_vencimento)->toDateString() : null,
+                'faturado_em'=> $r->data_faturamento ? Carbon::parse($r->data_faturamento)->toDateString() : null,
+            ])
             ->values()
             ->all();
     }
