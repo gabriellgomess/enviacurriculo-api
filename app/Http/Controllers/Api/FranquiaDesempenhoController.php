@@ -487,7 +487,8 @@ class FranquiaDesempenhoController extends Controller
         return $q->orderByDesc(DB::raw('COALESCE(cr.data_vencimento, cr.data_faturamento, cr.created_at)'))
             ->get([
                 'cr.id', 'cr.candidato_nome', 'cr.vaga_nome', 'cr.empresa_nome', 'cr.franchise_nome',
-                'cr.valor_bruto', 'cr.comissao_perc', 'cr.valor_liquido', 'cr.data_vencimento', 'cr.data_faturamento',
+                'cr.valor_bruto', 'cr.comissao_perc', 'cr.royalties_valor', 'cr.marketing_valor', 'cr.valor_liquido',
+                'cr.data_vencimento', 'cr.data_faturamento',
             ])
             ->map(fn($r) => [
                 'id'         => $r->id,
@@ -497,6 +498,8 @@ class FranquiaDesempenhoController extends Controller
                 'unidade'    => $r->franchise_nome,
                 'faturado'   => (float) $r->valor_bruto,
                 'perc'       => $r->comissao_perc !== null ? (float) $r->comissao_perc : null,
+                'royalties'  => (float) $r->royalties_valor,
+                'marketing'  => (float) $r->marketing_valor,
                 'comissao'   => (float) $r->valor_liquido,
                 'vencimento' => $r->data_vencimento ? Carbon::parse($r->data_vencimento)->toDateString() : null,
                 'faturado_em'=> $r->data_faturamento ? Carbon::parse($r->data_faturamento)->toDateString() : null,
