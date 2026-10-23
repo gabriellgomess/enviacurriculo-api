@@ -226,6 +226,8 @@ class FranquiaDesempenhoController extends Controller
                 'origem'         => $propria ? 'propria' : 'terceiros',
                 'minha_comissao' => $propria ? $c['comissao_produtora'] : $c['comissao_dona'],
                 'meu_perc'       => $propria ? $c['comissao_produtora_perc'] : $c['comissao_dona_perc'],
+                'meus_royalties' => $propria ? $c['royalties_produtora'] : $c['royalties_dona'],
+                'meu_marketing'  => $propria ? $c['marketing_produtora'] : $c['marketing_dona'],
             ];
         });
     }
@@ -262,14 +264,19 @@ class FranquiaDesempenhoController extends Controller
         return array_map('intval', (array) $r);
     }
 
-    /** Admitidos do período (pela data de admissão) e a conversão. */
-    private function conversao(Request $request, ?array $periodo): array
+    /**
+     * Admitidos do período (pela data de admissão) e a conversão. Com
+     * `$recorte` (propria / terceiros), só daquela origem.
+     */
+    private function conversao(Request $request, ?array $periodo, ?callable $recorte = null): array
     {
-        $q = $this->base($request);
+        $base = fn() => $recorte ? $recorte($this->base($request)) : $this->base($request);
+
+        $q = $base();
         $this->aplicarPeriodo($q, 'e.created_at', $periodo);
         $vinculos = (clone $q)->count();
 
-        $fechadas = (int) $this->contratacoesDe($this->base($request), $periodo)
+        $fechadas = (int) $this->contratacoesDe($base(), $periodo)
             ->whereNotNull('e.data_admissao')->count();
 
         return [
@@ -301,6 +308,16 @@ class FranquiaDesempenhoController extends Controller
         $terceiros = $colocacoes->where('origem', 'terceiros');
         $soma      = fn(Collection $l, string $campo) => $this->centavos($l, $campo);
 
+        $resumoComissao = fn(Collection $l) => [
+            'total'       => $soma($l, 'minha_comissao'),
+            'estimado'    => $soma($l->where('estimado', true), 'minha_comissao'),
+            'colocacoes'  => $l->count(),
+            'admitidas'   => $l->where('estimado', false)->count(),
+            'aguardando'  => $l->where('estimado', true)->count(),
+            // Sem salário ou sem taxa: ficam fora dos valores (a tela avisa)
+            'incompletas' => $l->where('completa', false)->count(),
+        ];
+
         $meta = $this->meta($intervalos);
         $realizado = $soma($propria->where('estimado', false), 'faturado');
         $estimado  = $soma($propria->where('estimado', true), 'faturado');
@@ -313,20 +330,30 @@ class FranquiaDesempenhoController extends Controller
             ->selectRaw('SUM(e.created_at >= ?) as mes', [now()->startOfMonth()])
             ->first();
 
-        $conv = $this->conversao($request, $intervalos);
-        $convAntes = $anterior ? $this->conversao($request, $anterior) : null;
+        // Conversão com a comparação ao período anterior; na Premium também
+        // separada por origem (minha produção / de terceiros)
+        $convDe = function (?callable $recorte, ?string $origem) use ($request, $intervalos, $anterior, $colocacoes) {
+            $conv  = $this->conversao($request, $intervalos, $recorte);
+            $antes = $anterior ? $this->conversao($request, $anterior, $recorte) : null;
+            $doEscopo = $origem ? $colocacoes->where('origem', $origem) : $colocacoes;
+
+            return $conv + [
+                'aguardando' => $doEscopo->where('estimado', true)->count(),
+                'anterior'   => $antes['conversao'] ?? null,
+                'variacao'   => $antes && $conv['conversao'] !== null && $antes['conversao'] !== null
+                    ? round($conv['conversao'] - $antes['conversao'], 1) : null,
+            ];
+        };
 
         return [
-            'comissao' => [
-                'total'       => $soma($colocacoes, 'minha_comissao'),
-                'propria'     => $soma($propria, 'minha_comissao'),
-                'terceiros'   => $soma($terceiros, 'minha_comissao'),
-                'estimado'    => $soma($colocacoes->where('estimado', true), 'minha_comissao'),
-                'colocacoes'  => $colocacoes->count(),
-                'admitidas'   => $colocacoes->where('estimado', false)->count(),
-                'aguardando'  => $colocacoes->where('estimado', true)->count(),
-                // Sem salário ou sem taxa: ficam fora dos valores (a tela avisa)
-                'incompletas' => $colocacoes->where('completa', false)->count(),
+            'comissao' => $resumoComissao($colocacoes) + [
+                'propria'   => $soma($propria, 'minha_comissao'),
+                'terceiros' => $soma($terceiros, 'minha_comissao'),
+                // Premium: o mesmo resumo só da minha produção / só de terceiros
+                'origem'    => $this->premium ? [
+                    'propria'   => $resumoComissao($propria),
+                    'terceiros' => $resumoComissao($terceiros),
+                ] : null,
             ],
             // A meta (em dinheiro) é de faturamento da própria produção — o
             // mesmo critério do valor_atual das metas no Dashboard
@@ -345,6 +372,9 @@ class FranquiaDesempenhoController extends Controller
             ],
             // Currículos que a própria unidade encaminhou no período
             'envios'     => $resumo['propria'],
+            // Premium: currículos que outras unidades (ou o feed) encaminharam
+            // para as vagas dela — o restante dos vínculos do escopo
+            'envios_terceiros' => $this->premium ? $resumo['vinculos'] - $resumo['propria'] : null,
             'reposicoes' => [
                 'total'    => $reposicoes->count(),
                 'comissao' => $soma($reposicoes, 'minha_comissao'),
@@ -353,12 +383,11 @@ class FranquiaDesempenhoController extends Controller
                 'propria'   => $this->situacoes($request, $intervalos, fn($q) => $this->propria($q)),
                 'terceiros' => $this->premium ? $this->situacoes($request, $intervalos, fn($q) => $this->terceiros($q)) : null,
             ],
-            'conversao' => $conv + [
-                'aguardando' => $colocacoes->where('estimado', true)->count(),
-                'anterior'   => $convAntes['conversao'] ?? null,
-                'variacao'   => $convAntes && $conv['conversao'] !== null && $convAntes['conversao'] !== null
-                    ? round($conv['conversao'] - $convAntes['conversao'], 1) : null,
-            ],
+            'conversao' => $convDe(null, null),
+            'conversao_origem' => $this->premium ? [
+                'propria'   => $convDe(fn($q) => $this->propria($q), 'propria'),
+                'terceiros' => $convDe(fn($q) => $this->terceiros($q), 'terceiros'),
+            ] : null,
         ];
     }
 
@@ -424,6 +453,8 @@ class FranquiaDesempenhoController extends Controller
                     'origem'        => $c['origem'],
                     'faturado'      => $c['faturado'],
                     'perc'          => $c['meu_perc'],
+                    'royalties'     => round($c['meus_royalties'], 2),
+                    'marketing'     => round($c['meu_marketing'], 2),
                     'comissao'      => round($c['minha_comissao'], 2),
                     'completa'      => $c['completa'],
                     'estimado'      => $c['estimado'],

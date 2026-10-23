@@ -89,6 +89,11 @@ class ValoresColocacoes
                 'comissao_produtora_perc' => $v['comissao_produtora']['percentual'] ?? null,
                 'comissao_dona'           => $v ? $v['comissao_dona']['liquida'] : 0.0,
                 'comissao_dona_perc'      => $v && $v['comissao_dona']['devida'] ? $v['comissao_dona']['percentual'] : null,
+                // Royalties e marketing descontados de cada lado (ficam com a rede)
+                'royalties_produtora'     => $v['comissao_produtora']['royalties'] ?? 0.0,
+                'marketing_produtora'     => $v['comissao_produtora']['marketing'] ?? 0.0,
+                'royalties_dona'          => $v['comissao_dona']['royalties'] ?? 0.0,
+                'marketing_dona'          => $v['comissao_dona']['marketing'] ?? 0.0,
                 'garantia_ate'     => $garantiaAte,
             ];
         })->values();
