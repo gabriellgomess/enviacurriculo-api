@@ -230,6 +230,17 @@ class FranquiaDesempenhoController extends Controller
         });
     }
 
+    /**
+     * Soma de valores em dinheiro arredondando cada colocação aos centavos
+     * antes — o mesmo que a lista de comissões mostra linha a linha. Somar
+     * com precisão total e arredondar no fim deixava o card um centavo
+     * diferente do total da lista (ex.: R$ 3.960,20 x R$ 3.960,21).
+     */
+    private function centavos(Collection $colocacoes, string $campo): float
+    {
+        return round($colocacoes->sum(fn($c) => round($c[$campo], 2)), 2);
+    }
+
     /* ─── Seções ─────────────────────────────────────────────────────── */
 
     /** Vínculos do período (coorte): total e as contagens do funil. */
@@ -288,7 +299,7 @@ class FranquiaDesempenhoController extends Controller
     {
         $propria   = $colocacoes->where('origem', 'propria');
         $terceiros = $colocacoes->where('origem', 'terceiros');
-        $soma      = fn(Collection $l, string $campo) => round($l->sum($campo), 2);
+        $soma      = fn(Collection $l, string $campo) => $this->centavos($l, $campo);
 
         $meta = $this->meta($intervalos);
         $realizado = $soma($propria->where('estimado', false), 'faturado');
@@ -491,8 +502,8 @@ class FranquiaDesempenhoController extends Controller
                 'fechadas'   => $fechadas,
                 'aguardando' => $grupo->where('estimado', true)->count(),
                 'conversao'  => $nVinc ? round($fechadas / $nVinc * 100, 1) : null,
-                'faturado'   => round($grupo->sum('faturado'), 2),
-                'comissao'   => round($grupo->sum('minha_comissao'), 2),
+                'faturado'   => $this->centavos($grupo, 'faturado'),
+                'comissao'   => $this->centavos($grupo, 'minha_comissao'),
             ];
         })
             ->sortBy([['eu', 'desc'], ['comissao', 'desc'], ['vinculos', 'desc']])
@@ -553,9 +564,9 @@ class FranquiaDesempenhoController extends Controller
                 'fechadas'           => $fechadas,
                 'aguardando'         => $grupo->where('estimado', true)->count(),
                 'conversao'          => $nVinc ? round($fechadas / $nVinc * 100, 1) : null,
-                'realizado'          => round($grupo->where('estimado', false)->sum('faturado'), 2),
-                'estimado'           => round($grupo->where('estimado', true)->sum('faturado'), 2),
-                'comissao'           => round($grupo->sum('minha_comissao'), 2),
+                'realizado'          => $this->centavos($grupo->where('estimado', false), 'faturado'),
+                'estimado'           => $this->centavos($grupo->where('estimado', true), 'faturado'),
+                'comissao'           => $this->centavos($grupo, 'minha_comissao'),
                 'ultima_contratacao' => $data ? Carbon::parse($data)->toDateString() : null,
                 'situacao'           => match (true) {
                     $data === null                => 'nunca_fechou',
@@ -614,8 +625,8 @@ class FranquiaDesempenhoController extends Controller
         $meses = [];
         for ($m = 1; $m <= 12; $m++) {
             $doMes = $colocacoes[$m] ?? collect();
-            $parte = fn(string $origem, bool $estimado) => round(
-                $doMes->where('origem', $origem)->where('estimado', $estimado)->sum('minha_comissao'), 2);
+            $parte = fn(string $origem, bool $estimado) => $this->centavos(
+                $doMes->where('origem', $origem)->where('estimado', $estimado), 'minha_comissao');
 
             $meses[] = [
                 'mes'                 => $m,
@@ -663,7 +674,7 @@ class FranquiaDesempenhoController extends Controller
         return [
             'garantia' => [
                 'total'         => $garantia->count(),
-                'comissao'      => round($garantia->sum('minha_comissao'), 2),
+                'comissao'      => $this->centavos($garantia, 'minha_comissao'),
                 'vencem_7_dias' => $garantia->filter(fn($c) => $c['garantia_ate'] <= $em7)->count(),
             ],
             'empresas_sem_fechar' => [
